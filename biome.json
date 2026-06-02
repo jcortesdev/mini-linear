@@ -28,7 +28,7 @@
       }
     },
     {
-      "include": ["src/components/options-popover.tsx"],
+      "include": ["src/components/options-popover.tsx", "src/components/labels-picker.tsx"],
       "linter": {
         "rules": {
           "a11y": {

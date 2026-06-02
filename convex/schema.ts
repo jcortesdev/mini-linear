@@ -59,6 +59,10 @@ export default defineSchema({
     boardOrder: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
+    // Soft-delete timestamp. Absent = active. Set by the `remove` mutation,
+    // cleared by `restore`. Queries filter these out so the deletion looks
+    // immediate but Undo can still revive the row by id.
+    deletedAt: v.optional(v.number()),
   })
     .index('by_workspace', ['workspaceId'])
     .index('by_workspace_and_status', ['workspaceId', 'status'])

@@ -21,9 +21,10 @@ const STATUS_OPTIONS: Option<IssueStatus>[] = (
 type Props = {
   issueId: Id<'issues'>;
   status: IssueStatus;
+  variant?: 'icon' | 'inline';
 };
 
-export function StatusPicker({ issueId, status }: Props) {
+export function StatusPicker({ issueId, status, variant = 'icon' }: Props) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
@@ -58,9 +59,14 @@ export function StatusPicker({ issueId, status }: Props) {
         aria-label={`Status: ${meta.label}. Click to change`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded transition hover:bg-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800"
+        className={
+          variant === 'inline'
+            ? 'flex items-center gap-2 rounded px-2 py-1 text-sm transition hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-900'
+            : 'flex h-6 w-6 shrink-0 items-center justify-center rounded transition hover:bg-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800'
+        }
       >
         <Icon aria-hidden="true" className={`h-4 w-4 ${meta.iconClass}`} />
+        {variant === 'inline' && <span>{meta.label}</span>}
       </button>
       <OptionsPopover
         anchorRef={triggerRef}

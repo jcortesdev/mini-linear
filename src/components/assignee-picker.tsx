@@ -16,9 +16,10 @@ type Assignee = FunctionReturnType<typeof api.issues.list>[number]['assignee'];
 type Props = {
   issueId: Id<'issues'>;
   assignee: Assignee;
+  variant?: 'icon' | 'inline';
 };
 
-export function AssigneePicker({ issueId, assignee }: Props) {
+export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const members = useQuery(api.members.list);
@@ -80,9 +81,14 @@ export function AssigneePicker({ issueId, assignee }: Props) {
         aria-haspopup="listbox"
         aria-expanded={open}
         title={display}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:ring-zinc-700"
+        className={
+          variant === 'inline'
+            ? 'flex items-center gap-2 rounded px-2 py-1 text-sm transition hover:bg-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-900'
+            : 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:ring-zinc-700'
+        }
       >
         {assignee ? <Avatar initials={getInitials(display)} /> : <Avatar dashed />}
+        {variant === 'inline' && <span className={assignee ? '' : 'text-zinc-400'}>{display}</span>}
       </button>
       <OptionsPopover
         anchorRef={triggerRef}

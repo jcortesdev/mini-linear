@@ -31,8 +31,10 @@ export const list = query({
       .withIndex('by_workspace_and_number', (q) => q.eq('workspaceId', membership.workspaceId))
       .collect();
 
+    const active = issues.filter((issue) => issue.deletedAt === undefined);
+
     return await Promise.all(
-      issues.map(async (issue) => {
+      active.map(async (issue) => {
         const assignee = issue.assigneeId ? await ctx.db.get(issue.assigneeId) : null;
         const labels = (await Promise.all(issue.labelIds.map((id) => ctx.db.get(id)))).filter(
           (label): label is NonNullable<typeof label> => label !== null
@@ -151,7 +153,7 @@ export const get = query({
     if (!userId) return null;
 
     const issue = await ctx.db.get(id);
-    if (!issue) return null;
+    if (!issue || issue.deletedAt !== undefined) return null;
 
     const membership = await ctx.db
       .query('members')
@@ -239,5 +241,58 @@ export const update = mutation({
 
     await ctx.db.patch(args.id, patch);
     return await ctx.db.get(args.id);
+  },
+});
+
+/**
+ * Soft-delete: sets `deletedAt`. List and detail queries filter these out, so
+ * the row vanishes immediately while the doc sticks around for Undo.
+ */
+export const remove = mutation({
+  args: { id: v.id('issues') },
+  handler: async (ctx, { id }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('You must be signed in.');
+
+    const issue = await ctx.db.get(id);
+    if (!issue) throw new ConvexError('Issue not found.');
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_workspace_and_user', (q) =>
+        q.eq('workspaceId', issue.workspaceId).eq('userId', userId)
+      )
+      .first();
+    if (!membership) throw new ConvexError('Issue not found.');
+
+    await ctx.db.patch(id, { deletedAt: Date.now(), updatedAt: Date.now() });
+  },
+});
+
+/**
+ * Clears the soft-delete timestamp, bringing the issue back to the list with
+ * its original id, number, position, assignee and labels intact. Uses
+ * `replace` to fully drop the `deletedAt` key — `patch({deletedAt: undefined})`
+ * is a no-op in Convex 1.39 because undefined is dropped during serialization.
+ */
+export const restore = mutation({
+  args: { id: v.id('issues') },
+  handler: async (ctx, { id }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('You must be signed in.');
+
+    const issue = await ctx.db.get(id);
+    if (!issue) throw new ConvexError('Issue not found.');
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_workspace_and_user', (q) =>
+        q.eq('workspaceId', issue.workspaceId).eq('userId', userId)
+      )
+      .first();
+    if (!membership) throw new ConvexError('Issue not found.');
+
+    const { _id, _creationTime, deletedAt: _deletedAt, ...rest } = issue;
+    await ctx.db.replace(id, { ...rest, updatedAt: Date.now() });
   },
 });
