@@ -1,10 +1,7 @@
 'use client';
 
 import { useAuthActions } from '@convex-dev/auth/react';
-import { useMutation } from 'convex/react';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { api } from '../../../convex/_generated/api';
 import { GitHubIcon, GoogleIcon, LinkedInIcon, MailIcon, SparklesIcon } from './provider-icons';
 
 type OAuthProvider = 'github' | 'google' | 'linkedin';
@@ -16,9 +13,7 @@ const OAUTH_PROVIDERS: { id: OAuthProvider; label: string; icon: React.ReactNode
 ];
 
 export default function SignInPage() {
-  const router = useRouter();
   const { signIn } = useAuthActions();
-  const joinDemo = useMutation(api.demo.joinDemoWorkspace);
   const [email, setEmail] = useState('');
   const [emailState, setEmailState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
@@ -48,9 +43,9 @@ export default function SignInPage() {
   async function handleTryDemo() {
     setDemoState('joining');
     try {
-      await signIn('anonymous');
-      await joinDemo();
-      router.push('/issues');
+      // The `afterUserCreatedOrUpdated` callback on the server attaches new
+      // users to the demo workspace, so we only need to sign in + navigate.
+      await signIn('anonymous', { redirectTo: '/issues' });
     } catch {
       setDemoState('error');
     }

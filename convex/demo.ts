@@ -1,6 +1,5 @@
-import { getAuthUserId } from '@convex-dev/auth/server';
 import type { Id } from './_generated/dataModel';
-import { type MutationCtx, mutation } from './_generated/server';
+import type { MutationCtx } from './_generated/server';
 
 const DEMO_SLUG = 'demo';
 
@@ -107,29 +106,33 @@ async function ensureDemoWorkspace(ctx: MutationCtx): Promise<Id<'workspaces'>> 
   return workspaceId;
 }
 
-export const joinDemoWorkspace = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error('Not authenticated');
+/**
+ * Ensures the user is a member of the demo workspace, creating the workspace
+ * (with seed labels + issues) if it doesn't exist. Idempotent.
+ *
+ * Called from the Convex Auth `afterUserCreatedOrUpdated` callback so new users
+ * land in a populated workspace without a client-side round-trip.
+ */
+export async function ensureDemoMembership(
+  ctx: MutationCtx,
+  userId: Id<'users'>
+): Promise<Id<'workspaces'>> {
+  const workspaceId = await ensureDemoWorkspace(ctx);
 
-    const workspaceId = await ensureDemoWorkspace(ctx);
+  const existingMembership = await ctx.db
+    .query('members')
+    .withIndex('by_workspace_and_user', (q) =>
+      q.eq('workspaceId', workspaceId).eq('userId', userId)
+    )
+    .unique();
 
-    const existingMembership = await ctx.db
-      .query('members')
-      .withIndex('by_workspace_and_user', (q) =>
-        q.eq('workspaceId', workspaceId).eq('userId', userId)
-      )
-      .unique();
+  if (!existingMembership) {
+    await ctx.db.insert('members', {
+      workspaceId,
+      userId,
+      role: 'member',
+    });
+  }
 
-    if (!existingMembership) {
-      await ctx.db.insert('members', {
-        workspaceId,
-        userId,
-        role: 'member',
-      });
-    }
-
-    return workspaceId;
-  },
-});
+  return workspaceId;
+}
