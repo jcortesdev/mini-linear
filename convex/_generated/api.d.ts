@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as demo from "../demo.js";
 import type * as http from "../http.js";
+import type * as issues from "../issues.js";
 import type * as users from "../users.js";
 import type * as workspaces from "../workspaces.js";
 
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   demo: typeof demo;
   http: typeof http;
+  issues: typeof issues;
   users: typeof users;
   workspaces: typeof workspaces;
 }>;
