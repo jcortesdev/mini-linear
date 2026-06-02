@@ -1,3 +1,4 @@
+import { authTables } from '@convex-dev/auth/server';
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
@@ -19,15 +20,8 @@ const priorityValidator = v.union(...ISSUE_PRIORITY.map((p) => v.literal(p)));
 const roleValidator = v.union(...MEMBER_ROLE.map((r) => v.literal(r)));
 
 export default defineSchema({
-  // Minimal users table; gets replaced by the Convex Auth `authTables.users` shape
-  // in the next commit (M1 task #5). Keeping it here so the relations below typecheck
-  // and so `convex dev` can push this schema before auth is wired.
-  users: defineTable({
-    name: v.optional(v.string()),
-    email: v.optional(v.string()),
-    image: v.optional(v.string()),
-    isAnonymous: v.optional(v.boolean()),
-  }).index('by_email', ['email']),
+  // Convex Auth manages users, authSessions, authAccounts, etc.
+  ...authTables,
 
   workspaces: defineTable({
     name: v.string(),
