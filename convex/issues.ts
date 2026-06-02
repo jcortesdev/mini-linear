@@ -2,6 +2,10 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { mutation, query } from './_generated/server';
+import { ISSUE_PRIORITY, ISSUE_STATUS } from './schema';
+
+const statusValidator = v.union(...ISSUE_STATUS.map((s) => v.literal(s)));
+const priorityValidator = v.union(...ISSUE_PRIORITY.map((p) => v.literal(p)));
 
 /**
  * Lists issues in the current user's workspace, with assignee and labels
@@ -182,5 +186,58 @@ export const get = query({
         color: label.color,
       })),
     };
+  },
+});
+
+/**
+ * Updates one or more fields on an issue. Every field is optional — only the
+ * ones the caller passes are written. `assigneeId: null` clears the assignee;
+ * `undefined` (omitted) leaves it untouched.
+ */
+export const update = mutation({
+  args: {
+    id: v.id('issues'),
+    title: v.optional(v.string()),
+    status: v.optional(statusValidator),
+    priority: v.optional(priorityValidator),
+    assigneeId: v.optional(v.union(v.id('users'), v.null())),
+    description: v.optional(v.string()),
+    labelIds: v.optional(v.array(v.id('labels'))),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('You must be signed in.');
+
+    const issue = await ctx.db.get(args.id);
+    if (!issue) throw new ConvexError('Issue not found.');
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_workspace_and_user', (q) =>
+        q.eq('workspaceId', issue.workspaceId).eq('userId', userId)
+      )
+      .first();
+    if (!membership) throw new ConvexError('Issue not found.');
+
+    const patch: Partial<Doc<'issues'>> = { updatedAt: Date.now() };
+
+    if (args.title !== undefined) {
+      const trimmed = args.title.trim();
+      if (!trimmed) throw new ConvexError('Title is required.');
+      if (trimmed.length > MAX_TITLE_LENGTH) {
+        throw new ConvexError(`Title must be ${MAX_TITLE_LENGTH} characters or fewer.`);
+      }
+      patch.title = trimmed;
+    }
+    if (args.status !== undefined) patch.status = args.status;
+    if (args.priority !== undefined) patch.priority = args.priority;
+    if (args.description !== undefined) patch.description = args.description;
+    if (args.labelIds !== undefined) patch.labelIds = args.labelIds;
+    if (args.assigneeId !== undefined) {
+      patch.assigneeId = args.assigneeId ?? undefined;
+    }
+
+    await ctx.db.patch(args.id, patch);
+    return await ctx.db.get(args.id);
   },
 });
