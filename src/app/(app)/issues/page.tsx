@@ -1,5 +1,6 @@
 'use client';
 
+import { IssueCreator } from '@/components/issue-creator';
 import { IssueRow } from '@/components/issue-row';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../convex/_generated/api';
@@ -22,14 +23,19 @@ export default function IssuesPage() {
 
       {issues === undefined ? (
         <IssueListSkeleton />
-      ) : issues.length === 0 ? (
-        <EmptyIssues />
       ) : (
-        <ul className="flex-1 overflow-auto" aria-label="Issues">
-          {issues.map((issue) => (
-            <IssueRow key={issue._id} issue={issue} />
-          ))}
-        </ul>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <IssueCreator />
+          {issues.length === 0 ? (
+            <EmptyIssues />
+          ) : (
+            <ul className="flex-1 overflow-auto" aria-label="Issues">
+              {issues.map((issue) => (
+                <IssueRow key={issue._id} issue={issue} />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
@@ -61,8 +67,11 @@ function EmptyIssues() {
       <div className="max-w-md space-y-2 text-center">
         <h2 className="text-base font-semibold text-zinc-700 dark:text-zinc-300">No issues yet</h2>
         <p className="text-sm text-zinc-500">
-          Issue creation lands in the next module. For now, the demo workspace ships with seeded
-          issues — try the demo from the sign-in page to see them.
+          Press{' '}
+          <kbd className="rounded border border-zinc-300 px-1 font-mono text-xs dark:border-zinc-700">
+            c
+          </kbd>{' '}
+          or use the button above to create your first issue.
         </p>
       </div>
     </div>

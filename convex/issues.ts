@@ -1,5 +1,6 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
-import { query } from './_generated/server';
+import { ConvexError, v } from 'convex/values';
+import { mutation, query } from './_generated/server';
 
 /**
  * Lists issues in the current user's workspace, with assignee and labels
@@ -55,5 +56,69 @@ export const list = query({
         };
       })
     );
+  },
+});
+
+const MAX_TITLE_LENGTH = 200;
+
+/**
+ * Creates an issue in the viewer's workspace. Assigns the next workspace-scoped
+ * `number` (LIN-N) and a `boardOrder` past the current max so the new row lands
+ * at the bottom of the kanban column.
+ */
+export const create = mutation({
+  args: {
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError('You must be signed in to create an issue.');
+    }
+
+    const title = args.title.trim();
+    if (!title) {
+      throw new ConvexError('Title is required.');
+    }
+    if (title.length > MAX_TITLE_LENGTH) {
+      throw new ConvexError(`Title must be ${MAX_TITLE_LENGTH} characters or fewer.`);
+    }
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .first();
+    if (!membership) {
+      throw new ConvexError('No workspace found for this user.');
+    }
+
+    const lastByNumber = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace_and_number', (q) => q.eq('workspaceId', membership.workspaceId))
+      .order('desc')
+      .first();
+    const nextNumber = (lastByNumber?.number ?? 0) + 1;
+
+    const lastByBoardOrder = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', membership.workspaceId))
+      .collect();
+    const maxBoardOrder = lastByBoardOrder.reduce((max, i) => Math.max(max, i.boardOrder), 0);
+
+    const now = Date.now();
+    const issueId = await ctx.db.insert('issues', {
+      workspaceId: membership.workspaceId,
+      number: nextNumber,
+      title,
+      status: 'backlog',
+      priority: 'no_priority',
+      creatorId: userId,
+      labelIds: [],
+      boardOrder: maxBoardOrder + 1000,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return await ctx.db.get(issueId);
   },
 });
