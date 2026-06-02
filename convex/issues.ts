@@ -1,5 +1,6 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
+import type { Doc } from './_generated/dataModel';
 import { mutation, query } from './_generated/server';
 
 /**
@@ -120,5 +121,66 @@ export const create = mutation({
     });
 
     return await ctx.db.get(issueId);
+  },
+});
+
+function shapeUser(user: Doc<'users'> | null) {
+  if (!user) return null;
+  return {
+    _id: user._id,
+    name: user.name ?? null,
+    email: user.email ?? null,
+    image: user.image ?? null,
+  };
+}
+
+/**
+ * Loads a single issue with assignee, creator and labels resolved. Returns null
+ * if the issue doesn't exist or the viewer doesn't share its workspace — both
+ * collapse to "not found" on the client so we never leak existence across
+ * workspaces.
+ */
+export const get = query({
+  args: { id: v.id('issues') },
+  handler: async (ctx, { id }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const issue = await ctx.db.get(id);
+    if (!issue) return null;
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_workspace_and_user', (q) =>
+        q.eq('workspaceId', issue.workspaceId).eq('userId', userId)
+      )
+      .first();
+    if (!membership) return null;
+
+    const [assignee, creator] = await Promise.all([
+      issue.assigneeId ? ctx.db.get(issue.assigneeId) : Promise.resolve(null),
+      ctx.db.get(issue.creatorId),
+    ]);
+    const labels = (await Promise.all(issue.labelIds.map((labelId) => ctx.db.get(labelId)))).filter(
+      (label): label is NonNullable<typeof label> => label !== null
+    );
+
+    return {
+      _id: issue._id,
+      number: issue.number,
+      title: issue.title,
+      description: issue.description ?? '',
+      status: issue.status,
+      priority: issue.priority,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+      assignee: shapeUser(assignee),
+      creator: shapeUser(creator),
+      labels: labels.map((label) => ({
+        _id: label._id,
+        name: label.name,
+        color: label.color,
+      })),
+    };
   },
 });
