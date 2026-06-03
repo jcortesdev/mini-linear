@@ -1,10 +1,9 @@
 'use client';
 
 import { type IssueStatus, STATUS_META } from '@/lib/issue-meta';
-import { useMutation } from 'convex/react';
+import { useUpdateIssue } from '@/lib/issue-mutations';
 import { ChevronDown } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { type Option, OptionsPopover } from './options-popover';
 
@@ -28,21 +27,7 @@ type Props = {
 export function StatusPicker({ issueId, status, variant = 'icon' }: Props) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
-    if (args.status === undefined) return;
-    const list = localStore.getQuery(api.issues.list, {});
-    if (list) {
-      localStore.setQuery(
-        api.issues.list,
-        {},
-        list.map((i) => (i._id === args.id ? { ...i, status: args.status as IssueStatus } : i))
-      );
-    }
-    const detail = localStore.getQuery(api.issues.get, { id: args.id });
-    if (detail) {
-      localStore.setQuery(api.issues.get, { id: args.id }, { ...detail, status: args.status });
-    }
-  });
+  const update = useUpdateIssue();
 
   const meta = STATUS_META[status];
   const Icon = meta.icon;

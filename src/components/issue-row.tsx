@@ -1,10 +1,10 @@
 'use client';
 
-import { useMutation } from 'convex/react';
+import { useUpdateIssue } from '@/lib/issue-mutations';
 import type { FunctionReturnType } from 'convex/server';
 import Link from 'next/link';
 import { forwardRef } from 'react';
-import { api } from '../../convex/_generated/api';
+import type { api } from '../../convex/_generated/api';
 import { AssigneePicker } from './assignee-picker';
 import { InlineEditableTitle } from './inline-editable-title';
 import { PriorityPicker } from './priority-picker';
@@ -30,21 +30,7 @@ export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
   { issue, index, focused, onFocus },
   ref
 ) {
-  const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
-    if (args.title === undefined) return;
-    const list = localStore.getQuery(api.issues.list, {});
-    if (list) {
-      localStore.setQuery(
-        api.issues.list,
-        {},
-        list.map((i) => (i._id === args.id ? { ...i, title: args.title as string } : i))
-      );
-    }
-    const detail = localStore.getQuery(api.issues.get, { id: args.id });
-    if (detail) {
-      localStore.setQuery(api.issues.get, { id: args.id }, { ...detail, title: args.title });
-    }
-  });
+  const update = useUpdateIssue();
 
   return (
     <li
