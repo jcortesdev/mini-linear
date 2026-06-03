@@ -298,6 +298,38 @@ export const restore = mutation({
 });
 
 /**
+ * Restores every soft-deleted issue in the viewer's workspace. Admin op, used
+ * when the demo workspace accumulates accidental deletes during testing.
+ */
+export const restoreAllDeleted = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('You must be signed in.');
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .first();
+    if (!membership) return { restored: 0 };
+
+    const issues = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', membership.workspaceId))
+      .collect();
+
+    const deleted = issues.filter((i) => i.deletedAt !== undefined);
+    await Promise.all(
+      deleted.map((i) => {
+        const { _id, _creationTime, deletedAt: _deletedAt, ...rest } = i;
+        return ctx.db.replace(i._id, { ...rest, updatedAt: Date.now() });
+      })
+    );
+    return { restored: deleted.length };
+  },
+});
+
+/**
  * Hard-deletes every issue in the viewer's workspace whose title starts with
  * the given prefix. Intended for Playwright cleanup (`[e2e]`) — soft-delete
  * would leave the test rows in the DB forever. The prefix must be at least 3
