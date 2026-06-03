@@ -1,5 +1,6 @@
 'use client';
 
+import { usePalette } from '@/components/palette/palette-provider';
 import { useMutation } from 'convex/react';
 import { ConvexError } from 'convex/values';
 import { Plus } from 'lucide-react';
@@ -52,6 +53,21 @@ export function IssueCreator() {
       inputRef.current?.focus();
     }
   }, [mode]);
+
+  // Subscribe to "New issue" requests from the command palette. Fires once
+  // when `pendingNewIssue` flips to true (and the creator is mounted — if the
+  // user navigates from /board, this effect runs on mount with the flag set).
+  // The rAF refocus is for the already-expanded case: expand() is a no-op so
+  // the mode-change focus effect won't fire, but Radix Dialog has just sent
+  // focus back to the topbar trigger on close.
+  const palette = usePalette();
+  useEffect(() => {
+    if (palette.pendingNewIssue) {
+      expand();
+      palette.consumePendingNewIssue();
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [palette.pendingNewIssue, palette.consumePendingNewIssue, expand]);
 
   // `c` from anywhere opens the creator. Skip when the user is already typing
   // in a form field, editing content, or holding a modifier — those collisions

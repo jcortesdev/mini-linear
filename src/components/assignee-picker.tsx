@@ -1,7 +1,8 @@
 'use client';
 
 import { getInitials } from '@/lib/issue-meta';
-import { useMutation, useQuery } from 'convex/react';
+import { useUpdateIssue } from '@/lib/issue-mutations';
+import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { ChevronDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
@@ -25,27 +26,7 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const members = useQuery(api.members.list);
 
-  const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
-    if (args.assigneeId === undefined) return;
-    const cachedMembers = localStore.getQuery(api.members.list, {});
-    const nextAssignee: Assignee =
-      args.assigneeId === null
-        ? null
-        : (cachedMembers?.find((m) => m._id === args.assigneeId) ?? null);
-
-    const list = localStore.getQuery(api.issues.list, {});
-    if (list) {
-      localStore.setQuery(
-        api.issues.list,
-        {},
-        list.map((i) => (i._id === args.id ? { ...i, assignee: nextAssignee } : i))
-      );
-    }
-    const detail = localStore.getQuery(api.issues.get, { id: args.id });
-    if (detail) {
-      localStore.setQuery(api.issues.get, { id: args.id }, { ...detail, assignee: nextAssignee });
-    }
-  });
+  const update = useUpdateIssue();
 
   const options = useMemo<Option<PickerValue>[]>(() => {
     const memberOptions: Option<PickerValue>[] = (members ?? []).map((m) => {

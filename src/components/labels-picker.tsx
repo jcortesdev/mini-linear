@@ -1,6 +1,7 @@
 'use client';
 
-import { useMutation, useQuery } from 'convex/react';
+import { useUpdateIssue } from '@/lib/issue-mutations';
+import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { Tag } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
@@ -31,28 +32,7 @@ export function LabelsPicker({ issueId, selected }: Props) {
 
   const selectedIds = new Set(selected.map((l) => l._id));
 
-  const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
-    if (args.labelIds === undefined) return;
-    const cached = localStore.getQuery(api.labels.list, {});
-    if (!cached) return;
-    const nextLabels = args.labelIds
-      .map((id) => cached.find((l) => l._id === id))
-      .filter((l): l is NonNullable<typeof l> => l !== undefined)
-      .map((l) => ({ _id: l._id, name: l.name, color: l.color }));
-
-    const list = localStore.getQuery(api.issues.list, {});
-    if (list) {
-      localStore.setQuery(
-        api.issues.list,
-        {},
-        list.map((i) => (i._id === args.id ? { ...i, labels: nextLabels } : i))
-      );
-    }
-    const detail = localStore.getQuery(api.issues.get, { id: args.id });
-    if (detail) {
-      localStore.setQuery(api.issues.get, { id: args.id }, { ...detail, labels: nextLabels });
-    }
-  });
+  const update = useUpdateIssue();
 
   useLayoutEffect(() => {
     if (!open) return;

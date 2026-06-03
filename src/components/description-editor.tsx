@@ -1,14 +1,13 @@
 'use client';
 
+import { useUpdateIssue } from '@/lib/issue-mutations';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from 'convex/react';
 import { Eye, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { z } from 'zod';
-import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 
 const MAX_DESCRIPTION_LENGTH = 50_000;
@@ -36,17 +35,7 @@ type Props = {
  */
 export function DescriptionEditor({ issueId, initialValue }: Props) {
   const [mode, setMode] = useState<'preview' | 'edit'>(initialValue.trim() ? 'preview' : 'edit');
-  const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
-    if (args.description === undefined) return;
-    const detail = localStore.getQuery(api.issues.get, { id: args.id });
-    if (detail) {
-      localStore.setQuery(
-        api.issues.get,
-        { id: args.id },
-        { ...detail, description: args.description }
-      );
-    }
-  });
+  const update = useUpdateIssue();
 
   const {
     register,
