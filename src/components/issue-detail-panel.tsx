@@ -140,7 +140,7 @@ function Header({
   }, [fullPage]);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+    <div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
       <span className="font-mono text-xs text-zinc-500">LIN-{issue.number}</span>
       <div className="flex items-center gap-1">
         <button
@@ -163,7 +163,7 @@ function Header({
           </button>
         )}
       </div>
-    </header>
+    </div>
   );
 }
 
@@ -229,7 +229,7 @@ function PersonChip({
   fallback: string;
 }) {
   if (!person) {
-    return <span className="px-2 text-zinc-400">{fallback}</span>;
+    return <span className="px-2 text-zinc-500">{fallback}</span>;
   }
   const display = person.name ?? person.email ?? 'Member';
   return (

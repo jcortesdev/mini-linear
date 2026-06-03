@@ -108,7 +108,7 @@ export function IssueCreator() {
         >
           <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
           <span>
-            New issue <kbd className="ml-1 font-mono text-[10px] text-zinc-400">c</kbd>
+            New issue <kbd className="ml-1 font-mono text-[10px] text-zinc-500">c</kbd>
           </span>
         </button>
       </div>
@@ -124,7 +124,7 @@ export function IssueCreator() {
         }}
         className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-2 py-1.5 focus-within:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:focus-within:border-zinc-500"
       >
-        <Plus aria-hidden="true" className="h-4 w-4 shrink-0 text-zinc-400" />
+        <Plus aria-hidden="true" className="h-4 w-4 shrink-0 text-zinc-500" />
         <input
           ref={inputRef}
           type="text"
@@ -147,7 +147,7 @@ export function IssueCreator() {
           maxLength={200}
           className="flex-1 bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none disabled:opacity-60 dark:text-zinc-100"
         />
-        <span className="hidden text-[10px] text-zinc-400 sm:inline">
+        <span className="hidden text-[10px] text-zinc-500 sm:inline">
           <kbd className="font-mono">enter</kbd> to add · <kbd className="font-mono">esc</kbd> to
           cancel
         </span>

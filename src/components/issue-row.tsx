@@ -3,6 +3,7 @@
 import { useMutation } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import Link from 'next/link';
+import { forwardRef } from 'react';
 import { api } from '../../convex/_generated/api';
 import { AssigneePicker } from './assignee-picker';
 import { InlineEditableTitle } from './inline-editable-title';
@@ -11,11 +12,24 @@ import { StatusPicker } from './status-picker';
 
 type Issue = FunctionReturnType<typeof api.issues.list>[number];
 
+// Optimistic rows are tagged with crypto.randomUUID() — a real Convex Id is
+// pure lowercase base32 with no dashes. We use this to disable navigation
+// (would error with ArgumentValidationError) until the server confirms.
+function isOptimisticId(id: string): boolean {
+  return id.includes('-');
+}
+
 type Props = {
   issue: Issue;
+  index: number;
+  focused: boolean;
+  onFocus: () => void;
 };
 
-export function IssueRow({ issue }: Props) {
+export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
+  { issue, index, focused, onFocus },
+  ref
+) {
   const update = useMutation(api.issues.update).withOptimisticUpdate((localStore, args) => {
     if (args.title === undefined) return;
     const list = localStore.getQuery(api.issues.list, {});
@@ -33,17 +47,33 @@ export function IssueRow({ issue }: Props) {
   });
 
   return (
-    <li className="flex items-center gap-3 border-b border-zinc-200 px-4 py-2 transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/60">
+    <li
+      ref={ref}
+      data-row-index={index}
+      data-issue-id={issue._id}
+      tabIndex={focused ? 0 : -1}
+      onFocus={onFocus}
+      className="flex items-center gap-3 border-b border-zinc-200 px-4 py-2 outline-none transition hover:bg-zinc-50 focus-visible:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900/60 dark:focus-visible:bg-zinc-900"
+    >
       <PriorityPicker issueId={issue._id} priority={issue.priority} />
       <StatusPicker issueId={issue._id} status={issue.status} />
 
-      <Link
-        href={`/issues/${issue._id}`}
-        data-issue-row-id={issue._id}
-        className="flex w-16 shrink-0 items-center font-mono text-xs text-zinc-500 focus:outline-none focus-visible:underline dark:text-zinc-500"
-      >
-        LIN-{issue.number}
-      </Link>
+      {isOptimisticId(issue._id) ? (
+        <span
+          aria-label="Saving issue"
+          className="flex w-16 shrink-0 items-center font-mono text-xs italic text-zinc-400 dark:text-zinc-600"
+        >
+          LIN-{issue.number}
+        </span>
+      ) : (
+        <Link
+          href={`/issues/${issue._id}`}
+          data-issue-row-id={issue._id}
+          className="flex w-16 shrink-0 items-center font-mono text-xs text-zinc-500 focus:outline-none focus-visible:underline dark:text-zinc-500"
+        >
+          LIN-{issue.number}
+        </Link>
+      )}
 
       <div className="flex flex-1 items-center gap-3 overflow-hidden">
         <InlineEditableTitle
@@ -75,4 +105,4 @@ export function IssueRow({ issue }: Props) {
       <AssigneePicker issueId={issue._id} assignee={issue.assignee} />
     </li>
   );
-}
+});

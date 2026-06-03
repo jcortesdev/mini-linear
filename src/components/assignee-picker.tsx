@@ -88,7 +88,7 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
         }
       >
         {assignee ? <Avatar initials={getInitials(display)} /> : <Avatar dashed />}
-        {variant === 'inline' && <span className={assignee ? '' : 'text-zinc-400'}>{display}</span>}
+        {variant === 'inline' && <span className={assignee ? '' : 'text-zinc-500'}>{display}</span>}
       </button>
       <OptionsPopover
         anchorRef={triggerRef}
@@ -114,7 +114,7 @@ function Avatar({ initials, dashed = false }: { initials?: string; dashed?: bool
     return (
       <span
         aria-hidden="true"
-        className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-zinc-300 text-[10px] text-zinc-400 dark:border-zinc-700 dark:text-zinc-500"
+        className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-zinc-400 text-[10px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-500"
       >
         ·
       </span>

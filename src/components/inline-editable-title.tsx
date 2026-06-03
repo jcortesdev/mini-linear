@@ -113,6 +113,7 @@ export function InlineEditableTitle({
   return (
     <button
       type="button"
+      data-edit-title
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
