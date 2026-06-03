@@ -11,8 +11,9 @@ import { useRemoveIssue, useUpdateIssue } from '@/lib/issue-mutations';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
 import { useMutation, useQuery } from 'convex/react';
-import { KanbanSquare, ListTodo, Plus, Trash2, UserRound } from 'lucide-react';
+import { KanbanSquare, Keyboard, ListTodo, Plus, Trash2, UserRound } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { useToast } from '../toast-provider';
@@ -33,9 +34,25 @@ function parseIssueId(path: string | null): Id<'issues'> | null {
 }
 
 export function CommandPalette() {
-  const { open, setOpen, requestNewIssue } = usePalette();
+  const { open, setOpen, requestNewIssue, pendingSearch, consumePendingSearch } = usePalette();
   const router = useRouter();
   const pathname = usePathname();
+  const [search, setSearch] = useState('');
+
+  // Consume a queued search query (from `?` opening the palette into the
+  // shortcuts list). Runs once per request, then the input is back to fully
+  // user-controlled.
+  useEffect(() => {
+    if (pendingSearch !== null) {
+      setSearch(pendingSearch);
+      consumePendingSearch();
+    }
+  }, [pendingSearch, consumePendingSearch]);
+
+  // Reset the input when the palette closes so the next open starts blank.
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
   const issueId = parseIssueId(pathname);
   const issue = useQuery(api.issues.get, issueId ? { id: issueId } : 'skip');
   const update = useUpdateIssue();
@@ -132,6 +149,8 @@ export function CommandPalette() {
       </Dialog.Description>
 
       <Command.Input
+        value={search}
+        onValueChange={setSearch}
         placeholder="Search or run a command…"
         className="w-full border-b border-zinc-200 bg-transparent px-4 py-3 text-sm text-zinc-900 placeholder-zinc-500 outline-none dark:border-zinc-800 dark:text-zinc-100"
       />
@@ -269,10 +288,36 @@ export function CommandPalette() {
             </Command.Group>
           </>
         )}
+
+        <Command.Group heading="Keyboard shortcuts" className={GROUP_HEADING_CLASS}>
+          {SHORTCUT_DOCS.map((doc) => (
+            <PaletteItem
+              key={doc.label}
+              value={`shortcut ${doc.label.toLowerCase()}`}
+              icon={<Keyboard aria-hidden="true" className="h-4 w-4" />}
+              label={doc.label}
+              shortcut={doc.keys}
+              disabled
+              onSelect={() => {}}
+            />
+          ))}
+        </Command.Group>
       </Command.List>
     </Command.Dialog>
   );
 }
+
+const SHORTCUT_DOCS: ReadonlyArray<{ label: string; keys: readonly string[] }> = [
+  { label: 'Open command palette', keys: ['⌘', 'K'] },
+  { label: 'New issue', keys: ['c'] },
+  { label: 'Edit focused issue title', keys: ['e'] },
+  { label: 'Open focused issue', keys: ['enter'] },
+  { label: 'Move row focus', keys: ['↑', '↓'] },
+  { label: 'Close panel or dialog', keys: ['esc'] },
+  { label: 'Go to Issues', keys: ['g', 'i'] },
+  { label: 'Go to Board', keys: ['g', 'b'] },
+  { label: 'Show keyboard shortcuts', keys: ['?'] },
+];
 
 type PaletteItemProps = {
   value: string;

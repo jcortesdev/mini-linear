@@ -24,6 +24,13 @@ type PaletteContextValue = {
   pendingNewIssue: boolean;
   requestNewIssue: () => void;
   consumePendingNewIssue: () => void;
+  /**
+   * Opens the palette with the input pre-filled with `query`. Used by the
+   * `?` shortcut to deep-link into the Keyboard Shortcuts group.
+   */
+  openWithSearch: (query: string) => void;
+  pendingSearch: string | null;
+  consumePendingSearch: () => void;
 };
 
 const PaletteContext = createContext<PaletteContextValue | null>(null);
@@ -39,11 +46,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [pendingNewIssue, setPendingNewIssue] = useState(false);
+  const [pendingSearch, setPendingSearch] = useState<string | null>(null);
   const router = useRouter();
   const matcherRef = useRef<KeySequenceMatcher | null>(null);
 
   const requestNewIssue = useCallback(() => setPendingNewIssue(true), []);
   const consumePendingNewIssue = useCallback(() => setPendingNewIssue(false), []);
+
+  const openWithSearch = useCallback((query: string) => {
+    setPendingSearch(query);
+    setOpen(true);
+  }, []);
+  const consumePendingSearch = useCallback(() => setPendingSearch(null), []);
 
   // ⌘K / Ctrl+K toggle works from anywhere — even inside form inputs — so
   // users can summon the palette without re-focusing. preventDefault overrides
@@ -60,13 +74,14 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Leader-key sequences (`g i`, `g b`) — skip while the palette has the
+  // Leader-key sequences (`g i`, `g b`, `?`) — skip while the palette has the
   // keyboard or while the user is typing in a form field.
   useEffect(() => {
     const matcher = createKeySequenceMatcher({
       sequences: [
         { keys: ['g', 'i'], onMatch: () => router.push('/issues') },
         { keys: ['g', 'b'], onMatch: () => router.push('/board') },
+        { keys: ['?'], onMatch: () => openWithSearch('shortcut') },
       ],
     });
     matcherRef.current = matcher;
@@ -81,11 +96,28 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('keydown', onKeyDown);
       matcher.reset();
     };
-  }, [open, router]);
+  }, [open, router, openWithSearch]);
 
   const value = useMemo<PaletteContextValue>(
-    () => ({ open, setOpen, pendingNewIssue, requestNewIssue, consumePendingNewIssue }),
-    [open, pendingNewIssue, requestNewIssue, consumePendingNewIssue]
+    () => ({
+      open,
+      setOpen,
+      pendingNewIssue,
+      requestNewIssue,
+      consumePendingNewIssue,
+      openWithSearch,
+      pendingSearch,
+      consumePendingSearch,
+    }),
+    [
+      open,
+      pendingNewIssue,
+      requestNewIssue,
+      consumePendingNewIssue,
+      openWithSearch,
+      pendingSearch,
+      consumePendingSearch,
+    ]
   );
 
   return (
