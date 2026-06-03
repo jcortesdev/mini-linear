@@ -26,6 +26,17 @@
           "allowTrailingCommas": true
         }
       }
+    },
+    {
+      "include": ["src/components/options-popover.tsx", "src/components/labels-picker.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useKeyWithClickEvents": "off"
+          }
+        }
+      }
     }
   ],
   "formatter": {

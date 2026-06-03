@@ -19,7 +19,10 @@ export function Topbar() {
   const displayName = viewer?.name ?? viewer?.email ?? (viewer?.isAnonymous ? 'Guest' : 'Loading…');
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-zinc-200 px-4 dark:border-zinc-800">
+    <header
+      aria-label="App"
+      className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-zinc-200 px-4 dark:border-zinc-800"
+    >
       <button
         type="button"
         // ⌘K palette lands in Module 3. This button is the affordance for it.
