@@ -44,19 +44,55 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function PaletteProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenInternal] = useState(false);
   const [pendingNewIssue, setPendingNewIssue] = useState(false);
   const [pendingSearch, setPendingSearch] = useState<string | null>(null);
   const router = useRouter();
   const matcherRef = useRef<KeySequenceMatcher | null>(null);
+  // Radix Dialog's FocusScope snapshots `activeElement` at mount, but cmdk's
+  // Command.Input auto-focuses synchronously during the same render — so the
+  // snapshot ends up being the input itself. On close FocusScope's restore
+  // target is gone and focus falls to <body>. We snapshot the trigger here
+  // before each open and restore it ourselves on the close transition.
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
+
+  const snapshotFocus = useCallback(() => {
+    triggerRef.current = document.activeElement as HTMLElement | null;
+  }, []);
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (next) snapshotFocus();
+      setOpenInternal(next);
+    },
+    [snapshotFocus]
+  );
+
+  // Restore focus to whatever opened the palette (topbar trigger, or whatever
+  // element was focused when ⌘K fired). See triggerRef in the context type
+  // for why Radix's built-in FocusScope can't be trusted here.
+  useEffect(() => {
+    if (wasOpenRef.current && !open) {
+      const target = triggerRef.current;
+      if (target && document.contains(target)) {
+        target.focus();
+      }
+    }
+    wasOpenRef.current = open;
+  }, [open]);
 
   const requestNewIssue = useCallback(() => setPendingNewIssue(true), []);
   const consumePendingNewIssue = useCallback(() => setPendingNewIssue(false), []);
 
-  const openWithSearch = useCallback((query: string) => {
-    setPendingSearch(query);
-    setOpen(true);
-  }, []);
+  const openWithSearch = useCallback(
+    (query: string) => {
+      snapshotFocus();
+      setPendingSearch(query);
+      setOpenInternal(true);
+    },
+    [snapshotFocus]
+  );
   const consumePendingSearch = useCallback(() => setPendingSearch(null), []);
 
   // ⌘K / Ctrl+K toggle works from anywhere — even inside form inputs — so
@@ -68,11 +104,15 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
       if (!isToggle) return;
       if (event.altKey || event.shiftKey) return;
       event.preventDefault();
-      setOpen((prev) => !prev);
+      setOpenInternal((prev) => {
+        const next = !prev;
+        if (next) snapshotFocus();
+        return next;
+      });
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [snapshotFocus]);
 
   // Leader-key sequences (`g i`, `g b`, `?`) — skip while the palette has the
   // keyboard or while the user is typing in a form field.
@@ -111,6 +151,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       open,
+      setOpen,
       pendingNewIssue,
       requestNewIssue,
       consumePendingNewIssue,

@@ -33,7 +33,7 @@ export function Topbar() {
       >
         <Search className="h-3.5 w-3.5" aria-hidden="true" />
         <span>Search or run a command…</span>
-        <kbd className="ml-2 rounded border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+        <kbd className="ml-2 rounded border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
           ⌘K
         </kbd>
       </button>
