@@ -2,12 +2,28 @@
 
 import { type KeySequenceMatcher, createKeySequenceMatcher } from '@/lib/key-sequence';
 import { useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { CommandPalette } from './command-palette';
 
 type PaletteContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
+  /**
+   * Set when "New issue" is picked from the palette while the creator may
+   * not be mounted yet (e.g. user is on /board). The creator subscribes and
+   * consumes it on mount; the regular `c` shortcut bypasses this entirely.
+   */
+  pendingNewIssue: boolean;
+  requestNewIssue: () => void;
+  consumePendingNewIssue: () => void;
 };
 
 const PaletteContext = createContext<PaletteContextValue | null>(null);
@@ -22,8 +38,12 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [pendingNewIssue, setPendingNewIssue] = useState(false);
   const router = useRouter();
   const matcherRef = useRef<KeySequenceMatcher | null>(null);
+
+  const requestNewIssue = useCallback(() => setPendingNewIssue(true), []);
+  const consumePendingNewIssue = useCallback(() => setPendingNewIssue(false), []);
 
   // ⌘K / Ctrl+K toggle works from anywhere — even inside form inputs — so
   // users can summon the palette without re-focusing. preventDefault overrides
@@ -63,7 +83,10 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     };
   }, [open, router]);
 
-  const value = useMemo<PaletteContextValue>(() => ({ open, setOpen }), [open]);
+  const value = useMemo<PaletteContextValue>(
+    () => ({ open, setOpen, pendingNewIssue, requestNewIssue, consumePendingNewIssue }),
+    [open, pendingNewIssue, requestNewIssue, consumePendingNewIssue]
+  );
 
   return (
     <PaletteContext.Provider value={value}>

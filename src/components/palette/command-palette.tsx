@@ -2,17 +2,24 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
-import { KanbanSquare, ListTodo } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { KanbanSquare, ListTodo, Plus } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { usePalette } from './palette-provider';
 
 export function CommandPalette() {
-  const { open, setOpen } = usePalette();
+  const { open, setOpen, requestNewIssue } = usePalette();
   const router = useRouter();
+  const pathname = usePathname();
 
   function go(path: string) {
     setOpen(false);
     router.push(path);
+  }
+
+  function newIssue() {
+    setOpen(false);
+    if (pathname !== '/issues') router.push('/issues');
+    requestNewIssue();
   }
 
   return (
@@ -38,6 +45,19 @@ export function CommandPalette() {
         <Command.Empty className="px-3 py-6 text-center text-sm text-zinc-500">
           No results.
         </Command.Empty>
+
+        <Command.Group
+          heading="Create"
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-zinc-500"
+        >
+          <PaletteItem
+            value="new issue"
+            icon={<Plus aria-hidden="true" className="h-4 w-4" />}
+            label="New issue"
+            shortcut={['c']}
+            onSelect={newIssue}
+          />
+        </Command.Group>
 
         <Command.Group
           heading="Navigation"
