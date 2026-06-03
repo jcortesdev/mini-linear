@@ -52,13 +52,19 @@ export function OptionsPopover<TValue extends string>({
   }, [open, options, value]);
 
   // Position the popover under the anchor — measured synchronously after the
-  // anchor and the list both exist, before the browser paints.
+  // anchor and the list both exist, before the browser paints. Clamps to the
+  // viewport's right edge so triggers near the screen border (e.g. the
+  // assignee chip at the end of an issue row) don't open off-screen.
   useLayoutEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    setPosition({ top: rect.bottom + 4, left: rect.left });
+    const estimatedWidth = listRef.current?.offsetWidth ?? 220;
+    const margin = 8;
+    const overflowRight = rect.left + estimatedWidth + margin - window.innerWidth;
+    const left = overflowRight > 0 ? Math.max(margin, rect.left - overflowRight) : rect.left;
+    setPosition({ top: rect.bottom + 4, left });
   }, [open, anchorRef]);
 
   // Move keyboard focus into the list so arrow keys work without the user
@@ -150,12 +156,12 @@ export function OptionsPopover<TValue extends string>({
               onClose();
               anchorRef.current?.focus();
             }}
-            className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 ${
+            className={`flex cursor-pointer items-center gap-2.5 px-3 py-2 ${
               isActive ? 'bg-zinc-100 dark:bg-zinc-900' : ''
             } ${isSelected ? 'font-medium' : ''}`}
           >
             {option.icon && (
-              <span className="flex h-4 w-4 shrink-0 items-center">{option.icon}</span>
+              <span className="flex shrink-0 items-center justify-center">{option.icon}</span>
             )}
             <span className="flex-1 truncate">{option.label}</span>
             {isSelected && (

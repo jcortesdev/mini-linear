@@ -3,6 +3,7 @@
 import { getInitials } from '@/lib/issue-meta';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
+import { ChevronDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -88,7 +89,12 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
         }
       >
         {assignee ? <Avatar initials={getInitials(display)} /> : <Avatar dashed />}
-        {variant === 'inline' && <span className={assignee ? '' : 'text-zinc-500'}>{display}</span>}
+        {variant === 'inline' && (
+          <>
+            <span className={assignee ? '' : 'text-zinc-500'}>{display}</span>
+            <ChevronDown aria-hidden="true" className="h-3 w-3 text-zinc-400" />
+          </>
+        )}
       </button>
       <OptionsPopover
         anchorRef={triggerRef}

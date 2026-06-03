@@ -296,3 +296,37 @@ export const restore = mutation({
     await ctx.db.replace(id, { ...rest, updatedAt: Date.now() });
   },
 });
+
+/**
+ * Hard-deletes every issue in the viewer's workspace whose title starts with
+ * the given prefix. Intended for Playwright cleanup (`[e2e]`) — soft-delete
+ * would leave the test rows in the DB forever. The prefix must be at least 3
+ * characters long to make accidental wipes harder; an empty/short prefix would
+ * be catastrophic on the shared demo workspace.
+ */
+export const purgeByTitlePrefix = mutation({
+  args: { prefix: v.string() },
+  handler: async (ctx, { prefix }) => {
+    if (prefix.trim().length < 3) {
+      throw new ConvexError('Prefix must be at least 3 characters.');
+    }
+
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('You must be signed in.');
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .first();
+    if (!membership) return { deleted: 0 };
+
+    const issues = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', membership.workspaceId))
+      .collect();
+
+    const targets = issues.filter((i) => i.title.startsWith(prefix));
+    await Promise.all(targets.map((i) => ctx.db.delete(i._id)));
+    return { deleted: targets.length };
+  },
+});

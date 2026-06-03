@@ -57,7 +57,12 @@ export function LabelsPicker({ issueId, selected }: Props) {
   useLayoutEffect(() => {
     if (!open) return;
     const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) setPosition({ top: rect.bottom + 4, left: rect.left });
+    if (!rect) return;
+    const estimatedWidth = listRef.current?.offsetWidth ?? 220;
+    const margin = 8;
+    const overflowRight = rect.left + estimatedWidth + margin - window.innerWidth;
+    const left = overflowRight > 0 ? Math.max(margin, rect.left - overflowRight) : rect.left;
+    setPosition({ top: rect.bottom + 4, left });
   }, [open]);
 
   useEffect(() => {

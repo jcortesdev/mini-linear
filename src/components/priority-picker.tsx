@@ -2,6 +2,7 @@
 
 import { type IssuePriority, PRIORITY_META } from '@/lib/issue-meta';
 import { useMutation } from 'convex/react';
+import { ChevronDown } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -68,7 +69,12 @@ export function PriorityPicker({ issueId, priority, variant = 'icon' }: Props) {
         }
       >
         <Icon aria-hidden="true" className={`h-4 w-4 ${meta.iconClass}`} />
-        {variant === 'inline' && <span>{meta.label}</span>}
+        {variant === 'inline' && (
+          <>
+            <span>{meta.label}</span>
+            <ChevronDown aria-hidden="true" className="h-3 w-3 text-zinc-400" />
+          </>
+        )}
       </button>
       <OptionsPopover
         anchorRef={triggerRef}

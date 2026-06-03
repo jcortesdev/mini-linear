@@ -196,7 +196,11 @@ function Metadata({ issue }: { issue: Issue }) {
           {issue.labels.map((label) => (
             <span
               key={label._id}
-              className="flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:text-zinc-300"
+              className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-zinc-700 dark:text-zinc-200"
+              style={{
+                backgroundColor: `${label.color}1f`,
+                borderColor: `${label.color}66`,
+              }}
             >
               <span
                 aria-hidden="true"
