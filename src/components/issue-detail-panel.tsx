@@ -6,18 +6,34 @@ import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { Trash2, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useEffect, useRef } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { AssigneePicker } from './assignee-picker';
 import { Avatar } from './avatar';
-import { DescriptionEditor } from './description-editor';
 import { InlineEditableTitle } from './inline-editable-title';
 import { LabelsPicker } from './labels-picker';
 import { PresenceViewers } from './presence-viewers';
 import { PriorityPicker } from './priority-picker';
 import { StatusPicker } from './status-picker';
 import { useToast } from './toast-provider';
+
+// Tiptap brings ~85 kB gzipped — load it only when a detail panel actually
+// mounts so the /issues list bundle stays lean. SSR off because Tiptap
+// initialises ProseMirror with a browser DOM reference.
+const DescriptionEditor = dynamic(
+  () => import('./description-editor-tiptap').then((m) => m.DescriptionEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-label="Loading description editor"
+        className="min-h-[6rem] animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-900"
+      />
+    ),
+  }
+);
 
 type Issue = NonNullable<FunctionReturnType<typeof api.issues.get>>;
 
