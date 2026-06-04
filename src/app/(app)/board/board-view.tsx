@@ -2,13 +2,15 @@
 
 import type { IssueStatus } from '@/lib/issue-meta';
 import {
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -24,6 +26,31 @@ import { BoardColumn } from './board-column';
 
 export type BoardIssue = FunctionReturnType<typeof api.issues.list>[number];
 type Grouped = Record<IssueStatus, BoardIssue[]>;
+
+/**
+ * Multi-container collision strategy for the kanban: use `pointerWithin` so
+ * the empty space of an empty column accepts drops as soon as the cursor is
+ * inside it (the canonical `closestCorners` would prefer a card in a busy
+ * neighbour column over an empty one and felt broken for most drops). Fall
+ * back to `rectIntersection` for keyboard-driven moves, where there is no
+ * pointer position to read.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) {
+    // When the pointer is inside both a card and its parent column droppable,
+    // prefer the card so dropping onto a slot inserts there rather than
+    // appending to the column.
+    return [...pointerCollisions].sort((a, b) => {
+      const aType = args.droppableContainers.find((c) => c.id === a.id)?.data.current?.type;
+      const bType = args.droppableContainers.find((c) => c.id === b.id)?.data.current?.type;
+      if (aType === 'card' && bType !== 'card') return -1;
+      if (bType === 'card' && aType !== 'card') return 1;
+      return 0;
+    });
+  }
+  return rectIntersection(args);
+};
 
 export function BoardView() {
   const issues = useQuery(api.issues.list);
@@ -71,31 +98,45 @@ export function BoardView() {
     if (!over || !grouped) return;
 
     const activeIssueId = active.id as string;
-    const overIssueId = over.id as string;
-    if (activeIssueId === overIssueId) return;
+    const overData = over.data.current as
+      | { type: 'card'; status: IssueStatus }
+      | { type: 'column'; status: IssueStatus }
+      | undefined;
 
     const sourceStatus = findStatusOf(grouped, activeIssueId);
-    const destStatus = findStatusOf(grouped, overIssueId);
-    if (!sourceStatus || !destStatus) return;
+    if (!sourceStatus) return;
+
+    // Resolve destination column + insertion index. When dropped on a card,
+    // insert at that card's slot; when dropped on a column (empty space, or
+    // empty column), append to the end.
+    const destStatus = overData?.status ?? findStatusOf(grouped, over.id as string);
+    if (!destStatus) return;
+
+    const droppedOnColumn = overData?.type === 'column';
+    if (!droppedOnColumn && active.id === over.id) return;
 
     setGrouped((prev) => {
       if (!prev) return prev;
       const sourceItems = prev[sourceStatus];
-      const destItems = prev[destStatus];
+      const destItemsRaw = prev[destStatus];
+      const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
+      if (fromIdx === -1) return prev;
 
       if (sourceStatus === destStatus) {
-        const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
-        const toIdx = sourceItems.findIndex((i) => i._id === overIssueId);
-        if (fromIdx === -1 || toIdx === -1) return prev;
+        const toIdx = droppedOnColumn
+          ? sourceItems.length - 1
+          : sourceItems.findIndex((i) => i._id === over.id);
+        if (toIdx === -1) return prev;
         return { ...prev, [sourceStatus]: arrayMove(sourceItems, fromIdx, toIdx) };
       }
 
-      const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
-      const toIdx = destItems.findIndex((i) => i._id === overIssueId);
-      if (fromIdx === -1 || toIdx === -1) return prev;
+      const toIdx = droppedOnColumn
+        ? destItemsRaw.length
+        : destItemsRaw.findIndex((i) => i._id === over.id);
+      if (toIdx === -1) return prev;
       const moved = { ...sourceItems[fromIdx], status: destStatus };
       const nextSource = [...sourceItems.slice(0, fromIdx), ...sourceItems.slice(fromIdx + 1)];
-      const nextDest = [...destItems.slice(0, toIdx), moved, ...destItems.slice(toIdx)];
+      const nextDest = [...destItemsRaw.slice(0, toIdx), moved, ...destItemsRaw.slice(toIdx)];
       return { ...prev, [sourceStatus]: nextSource, [destStatus]: nextDest };
     });
   }
@@ -122,7 +163,7 @@ export function BoardView() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}

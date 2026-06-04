@@ -1,6 +1,7 @@
 'use client';
 
 import { type IssueStatus, STATUS_META } from '@/lib/issue-meta';
+import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { BoardCard } from './board-card';
 import type { BoardIssue } from './board-view';
@@ -13,6 +14,14 @@ type Props = {
 export function BoardColumn({ status, issues }: Props) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
+  // Register the card list as a droppable so empty columns (and the empty
+  // space below the last card) accept drops — without this the only valid
+  // drop targets are the cards themselves, which makes most columns unusable
+  // until they have at least one card.
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column-${status}`,
+    data: { type: 'column', status },
+  });
 
   return (
     <section
@@ -29,8 +38,11 @@ export function BoardColumn({ status, issues }: Props) {
 
       <SortableContext items={issues.map((i) => i._id)} strategy={verticalListSortingStrategy}>
         <ul
+          ref={setNodeRef}
           aria-label={`${meta.label} issues`}
-          className="flex flex-col gap-2 overflow-y-auto px-2 pb-2"
+          className={`flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 transition-colors ${
+            isOver ? 'bg-zinc-100 dark:bg-zinc-900' : ''
+          }`}
         >
           {issues.length === 0 ? (
             <li className="rounded-md border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-700">
