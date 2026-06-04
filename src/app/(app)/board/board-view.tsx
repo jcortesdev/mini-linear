@@ -1,20 +1,110 @@
 'use client';
 
 import type { IssueStatus } from '@/lib/issue-meta';
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../../../convex/_generated/api';
 import { ISSUE_STATUS } from '../../../../convex/schema';
+import { BoardCardContent } from './board-card';
 import { BoardColumn } from './board-column';
 
 export type BoardIssue = FunctionReturnType<typeof api.issues.list>[number];
+type Grouped = Record<IssueStatus, BoardIssue[]>;
 
 export function BoardView() {
   const issues = useQuery(api.issues.list);
+  const [grouped, setGrouped] = useState<Grouped | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  if (issues === undefined) return <BoardSkeleton />;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const grouped = groupByStatus(issues);
+  // Convex memoizes the query result by content equality, so this effect only
+  // re-runs when the underlying data actually changes — but when it does, any
+  // in-progress local reorder is overwritten. That's expected in M4 Task 2;
+  // Task 3 wires the drag to a persisted mutation so the local mirror IS the
+  // server state.
+  useEffect(() => {
+    if (issues === undefined) return;
+    setGrouped(groupByStatus(issues));
+  }, [issues]);
+
+  const sensors = useSensors(
+    // Distance 8 keeps mouse clicks from triggering a drag — the Link inside
+    // each card still navigates to the slide-over on a plain click.
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const activeIssue = useMemo(() => {
+    if (!activeId || !grouped) return null;
+    for (const status of ISSUE_STATUS) {
+      const found = grouped[status].find((i) => i._id === activeId);
+      if (found) return found;
+    }
+    return null;
+  }, [activeId, grouped]);
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as string);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over || !grouped) return;
+
+    const activeIssueId = active.id as string;
+    const overIssueId = over.id as string;
+    if (activeIssueId === overIssueId) return;
+
+    const sourceStatus = findStatusOf(grouped, activeIssueId);
+    const destStatus = findStatusOf(grouped, overIssueId);
+    if (!sourceStatus || !destStatus) return;
+
+    setGrouped((prev) => {
+      if (!prev) return prev;
+      const sourceItems = prev[sourceStatus];
+      const destItems = prev[destStatus];
+
+      if (sourceStatus === destStatus) {
+        const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
+        const toIdx = sourceItems.findIndex((i) => i._id === overIssueId);
+        if (fromIdx === -1 || toIdx === -1) return prev;
+        return { ...prev, [sourceStatus]: arrayMove(sourceItems, fromIdx, toIdx) };
+      }
+
+      const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
+      const toIdx = destItems.findIndex((i) => i._id === overIssueId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const moved = { ...sourceItems[fromIdx], status: destStatus };
+      const nextSource = [...sourceItems.slice(0, fromIdx), ...sourceItems.slice(fromIdx + 1)];
+      const nextDest = [...destItems.slice(0, toIdx), moved, ...destItems.slice(toIdx)];
+      return { ...prev, [sourceStatus]: nextSource, [destStatus]: nextDest };
+    });
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
+  if (issues === undefined || grouped === null) return <BoardSkeleton />;
 
   return (
     <div className="flex h-full flex-col">
@@ -30,17 +120,33 @@ export function BoardView() {
         </div>
       </header>
 
-      <div className="flex flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3">
-        {ISSUE_STATUS.map((status) => (
-          <BoardColumn key={status} status={status} issues={grouped[status]} />
-        ))}
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <div className="flex flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3">
+          {ISSUE_STATUS.map((status) => (
+            <BoardColumn key={status} status={status} issues={grouped[status]} />
+          ))}
+        </div>
+
+        {mounted &&
+          createPortal(
+            <DragOverlay>
+              {activeIssue ? <BoardCardContent issue={activeIssue} /> : null}
+            </DragOverlay>,
+            document.body
+          )}
+      </DndContext>
     </div>
   );
 }
 
-function groupByStatus(issues: BoardIssue[]): Record<IssueStatus, BoardIssue[]> {
-  const buckets: Record<IssueStatus, BoardIssue[]> = {
+function groupByStatus(issues: BoardIssue[]): Grouped {
+  const buckets: Grouped = {
     backlog: [],
     todo: [],
     in_progress: [],
@@ -52,6 +158,13 @@ function groupByStatus(issues: BoardIssue[]): Record<IssueStatus, BoardIssue[]> 
     buckets[issue.status].push(issue);
   }
   return buckets;
+}
+
+function findStatusOf(grouped: Grouped, id: string): IssueStatus | null {
+  for (const status of ISSUE_STATUS) {
+    if (grouped[status].some((i) => i._id === id)) return status;
+  }
+  return null;
 }
 
 function BoardSkeleton() {

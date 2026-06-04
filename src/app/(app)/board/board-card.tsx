@@ -1,6 +1,8 @@
 'use client';
 
 import { PRIORITY_META, getInitials } from '@/lib/issue-meta';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
 import type { BoardIssue } from './board-view';
 
@@ -15,13 +17,16 @@ function isOptimisticId(id: string): boolean {
   return id.includes('-');
 }
 
-export function BoardCard({ issue }: Props) {
+/**
+ * Pure presentational card — used both as the sortable card body and as the
+ * snapshot rendered inside the global <DragOverlay /> during an active drag.
+ */
+export function BoardCardContent({ issue }: Props) {
   const priorityMeta = PRIORITY_META[issue.priority];
   const PriorityIcon = priorityMeta.icon;
   const assigneeName = issue.assignee?.name ?? issue.assignee?.email ?? null;
-  const optimistic = isOptimisticId(issue._id);
 
-  const content = (
+  return (
     <div className="flex flex-col gap-2 rounded-md border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 focus-visible:border-zinc-400 focus-visible:outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900">
       <div className="flex items-center gap-2 text-xs text-zinc-500">
         <PriorityIcon
@@ -31,11 +36,11 @@ export function BoardCard({ issue }: Props) {
         <span className="font-mono">LIN-{issue.number}</span>
       </div>
 
-      <p className="text-sm text-zinc-900 dark:text-zinc-100 line-clamp-2">{issue.title}</p>
+      <p className="line-clamp-2 text-sm text-zinc-900 dark:text-zinc-100">{issue.title}</p>
 
       <div className="flex items-center justify-between gap-2">
         {issue.labels.length > 0 ? (
-          <ul className="flex shrink min-w-0 flex-wrap gap-1" aria-label="Labels">
+          <ul aria-label="Labels" className="flex min-w-0 shrink flex-wrap gap-1">
             {issue.labels.map((label) => (
               <li
                 key={label._id}
@@ -69,22 +74,43 @@ export function BoardCard({ issue }: Props) {
       </div>
     </div>
   );
+}
+
+export function BoardCard({ issue }: Props) {
+  const optimistic = isOptimisticId(issue._id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue._id,
+    // Optimistic cards have no server-side id yet — disable drag activation so
+    // they can't fire a boardOrder update against a UUID that Convex would reject.
+    disabled: optimistic,
+    data: { type: 'card', status: issue.status },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : undefined,
+  };
 
   if (optimistic) {
     return (
-      <div aria-label="Saving issue" className="cursor-default opacity-70">
-        {content}
+      <div ref={setNodeRef} aria-label="Saving issue" className="cursor-default opacity-70">
+        <BoardCardContent issue={issue} />
       </div>
     );
   }
 
   return (
     <Link
+      ref={setNodeRef}
       href={`/issues/${issue._id}`}
       data-issue-card-id={issue._id}
-      className="block focus:outline-none"
+      style={style}
+      className="block touch-none focus:outline-none"
+      {...attributes}
+      {...listeners}
     >
-      {content}
+      <BoardCardContent issue={issue} />
     </Link>
   );
 }

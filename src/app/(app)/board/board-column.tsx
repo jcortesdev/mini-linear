@@ -1,6 +1,7 @@
 'use client';
 
 import { type IssueStatus, STATUS_META } from '@/lib/issue-meta';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { BoardCard } from './board-card';
 import type { BoardIssue } from './board-view';
 
@@ -26,22 +27,24 @@ export function BoardColumn({ status, issues }: Props) {
         <span className="text-xs text-zinc-500">{issues.length}</span>
       </header>
 
-      <ul
-        aria-label={`${meta.label} issues`}
-        className="flex flex-col gap-2 overflow-y-auto px-2 pb-2"
-      >
-        {issues.length === 0 ? (
-          <li className="rounded-md border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-700">
-            No issues
-          </li>
-        ) : (
-          issues.map((issue) => (
-            <li key={issue._id}>
-              <BoardCard issue={issue} />
+      <SortableContext items={issues.map((i) => i._id)} strategy={verticalListSortingStrategy}>
+        <ul
+          aria-label={`${meta.label} issues`}
+          className="flex flex-col gap-2 overflow-y-auto px-2 pb-2"
+        >
+          {issues.length === 0 ? (
+            <li className="rounded-md border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-700">
+              No issues
             </li>
-          ))
-        )}
-      </ul>
+          ) : (
+            issues.map((issue) => (
+              <li key={issue._id}>
+                <BoardCard issue={issue} />
+              </li>
+            ))
+          )}
+        </ul>
+      </SortableContext>
     </section>
   );
 }
