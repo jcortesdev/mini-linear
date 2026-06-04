@@ -68,4 +68,21 @@ export default defineSchema({
     .index('by_workspace_and_status', ['workspaceId', 'status'])
     .index('by_workspace_and_number', ['workspaceId', 'number'])
     .index('by_assignee', ['assigneeId']),
+
+  // Realtime presence: who is currently viewing each issue.
+  //
+  // The detail panel writes `lastHeartbeat` every 10s while open. Queries
+  // treat rows older than 30s (3× heartbeat) as stale and exclude them —
+  // a tab close, sign-out or network drop self-evicts within that window
+  // without any cleanup mutation needing to fire. A nightly cron (M5) and
+  // the optional `clearByUser` mutation handle prunable accumulation.
+  presence: defineTable({
+    workspaceId: v.id('workspaces'),
+    issueId: v.id('issues'),
+    userId: v.id('users'),
+    lastHeartbeat: v.number(),
+  })
+    .index('by_issue_and_user', ['issueId', 'userId'])
+    .index('by_issue', ['issueId'])
+    .index('by_user_and_workspace', ['userId', 'workspaceId']),
 });
