@@ -1,8 +1,13 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
-import { mutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './_generated/server';
 import { ISSUE_PRIORITY, ISSUE_STATUS } from './schema';
+
+// Soft-deleted issues live forever unless purged. The daily cron in
+// `convex/crons.ts` invokes `purgeOldSoftDeleted` with this threshold so the
+// Undo window stays wide but stale rows don't accumulate.
+const SOFT_DELETE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const statusValidator = v.union(...ISSUE_STATUS.map((s) => v.literal(s)));
 const priorityValidator = v.union(...ISSUE_PRIORITY.map((p) => v.literal(p)));
@@ -365,5 +370,66 @@ export const purgeByTitlePrefix = mutation({
     const targets = issues.filter((i) => i.title.startsWith(prefix));
     await Promise.all(targets.map((i) => ctx.db.delete(i._id)));
     return { deleted: targets.length };
+  },
+});
+
+/**
+ * Internal admin mutation. Rewrites `boardOrder` for every active issue in a
+ * workspace as `1000, 2000, 3000…` per status column (sorted ascending by
+ * current order). Defensive maintenance for the float-index convergence
+ * concern documented in M4 — typing it as `internalMutation` keeps it
+ * un-callable from the client; trigger it from the Convex dashboard if the
+ * canary `console.warn` in `computeInsertOrder` ever fires.
+ */
+export const rebalanceBoardOrder = internalMutation({
+  args: { workspaceId: v.id('workspaces') },
+  handler: async (ctx, { workspaceId }) => {
+    const issues = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', workspaceId))
+      .collect();
+
+    const byStatus = new Map<Doc<'issues'>['status'], Doc<'issues'>[]>();
+    for (const issue of issues) {
+      if (issue.deletedAt !== undefined) continue;
+      const bucket = byStatus.get(issue.status) ?? [];
+      bucket.push(issue);
+      byStatus.set(issue.status, bucket);
+    }
+
+    let updated = 0;
+    for (const bucket of byStatus.values()) {
+      bucket.sort((a, b) => a.boardOrder - b.boardOrder);
+      for (let i = 0; i < bucket.length; i++) {
+        const desired = (i + 1) * 1000;
+        if (bucket[i].boardOrder !== desired) {
+          await ctx.db.patch(bucket[i]._id, { boardOrder: desired });
+          updated += 1;
+        }
+      }
+    }
+
+    return { updated };
+  },
+});
+
+/**
+ * Internal cron-driven mutation. Hard-deletes every soft-deleted issue past
+ * the 30-day TTL. Conservative — issues only here after a user delete (sets
+ * `deletedAt`) AND no `restore` within the window. The Undo toast lives ~6s
+ * in-session so any production purge here is operating on truly abandoned
+ * rows.
+ */
+export const purgeOldSoftDeleted = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - SOFT_DELETE_TTL_MS;
+    // No index on `deletedAt` (the field is sparse — most issues never have
+    // one). The full table scan is acceptable for a daily cron at portfolio
+    // scale; revisit if the workspace ever holds tens of thousands of issues.
+    const issues = await ctx.db.query('issues').collect();
+    const targets = issues.filter((i) => i.deletedAt !== undefined && i.deletedAt < cutoff);
+    await Promise.all(targets.map((i) => ctx.db.delete(i._id)));
+    return { purged: targets.length };
   },
 });

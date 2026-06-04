@@ -1,5 +1,5 @@
 import type { Id } from './_generated/dataModel';
-import type { MutationCtx } from './_generated/server';
+import { type MutationCtx, internalMutation } from './_generated/server';
 
 const DEMO_SLUG = 'demo';
 
@@ -105,6 +105,80 @@ async function ensureDemoWorkspace(ctx: MutationCtx): Promise<Id<'workspaces'>> 
 
   return workspaceId;
 }
+
+/**
+ * Internal admin mutation. Restores any SEED_ISSUES that have been hard-deleted
+ * (or never inserted) from the demo workspace, idempotently. Soft-deleted
+ * issues are NOT touched — they're recoverable via the existing Undo path or
+ * `restoreAllDeleted`.
+ *
+ * Internal-only: invoke from the Convex dashboard, never from the client.
+ * The match is by title because LIN-N numbers shift over time and the title
+ * is the only stable identifier for a seed entry.
+ */
+export const reseedDemo = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const workspace = await ctx.db
+      .query('workspaces')
+      .withIndex('by_slug', (q) => q.eq('slug', DEMO_SLUG))
+      .unique();
+    if (!workspace) return { inserted: 0, reason: 'demo workspace missing' as const };
+
+    const owner = await ctx.db
+      .query('members')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', workspace._id))
+      .filter((q) => q.eq(q.field('role'), 'owner'))
+      .first();
+    if (!owner) return { inserted: 0, reason: 'demo bot owner missing' as const };
+
+    const existingIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', workspace._id))
+      .collect();
+    const activeTitles = new Set(
+      existingIssues.filter((i) => i.deletedAt === undefined).map((i) => i.title)
+    );
+
+    const existingLabels = await ctx.db
+      .query('labels')
+      .withIndex('by_workspace', (q) => q.eq('workspaceId', workspace._id))
+      .collect();
+    const labelByName = new Map(existingLabels.map((l) => [l.name, l._id]));
+
+    let nextNumber = existingIssues.reduce((max, i) => Math.max(max, i.number), 0) + 1;
+    let nextBoardOrder = existingIssues.reduce((max, i) => Math.max(max, i.boardOrder), 0) + 1000;
+    const now = Date.now();
+    let inserted = 0;
+
+    for (const seed of SEED_ISSUES) {
+      if (activeTitles.has(seed.title)) continue;
+      const labelIds = seed.labelIndexes
+        .map((idx) => labelByName.get(SEED_LABELS[idx].name))
+        .filter((id): id is Id<'labels'> => id !== undefined);
+
+      await ctx.db.insert('issues', {
+        workspaceId: workspace._id,
+        number: nextNumber,
+        title: seed.title,
+        description: '',
+        status: seed.status,
+        priority: seed.priority,
+        creatorId: owner.userId,
+        labelIds,
+        boardOrder: nextBoardOrder,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      nextNumber += 1;
+      nextBoardOrder += 1000;
+      inserted += 1;
+    }
+
+    return { inserted, reason: 'ok' as const };
+  },
+});
 
 /**
  * Ensures the user is a member of the demo workspace, creating the workspace
