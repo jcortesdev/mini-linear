@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
+import { Avatar } from './avatar';
 import { type Option, OptionsPopover } from './options-popover';
 
 const UNASSIGNED = '__unassigned__' as const;
@@ -34,7 +35,7 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
       return {
         value: m._id,
         label: display,
-        icon: <Avatar initials={getInitials(display)} />,
+        icon: <Avatar initials={getInitials(display)} image={m.image} />,
       };
     });
     return [
@@ -69,7 +70,11 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
             : 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition hover:ring-2 hover:ring-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:ring-zinc-700'
         }
       >
-        {assignee ? <Avatar initials={getInitials(display)} /> : <Avatar dashed />}
+        {assignee ? (
+          <Avatar initials={getInitials(display)} image={assignee.image} />
+        ) : (
+          <Avatar dashed />
+        )}
         {variant === 'inline' && (
           <>
             <span className={assignee ? '' : 'text-zinc-500'}>{display}</span>
@@ -93,26 +98,5 @@ export function AssigneePicker({ issueId, assignee, variant = 'icon' }: Props) {
         label="Change assignee"
       />
     </>
-  );
-}
-
-function Avatar({ initials, dashed = false }: { initials?: string; dashed?: boolean }) {
-  if (dashed) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-zinc-400 text-[10px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-500"
-      >
-        ·
-      </span>
-    );
-  }
-  return (
-    <span
-      aria-hidden="true"
-      className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-    >
-      {initials}
-    </span>
   );
 }

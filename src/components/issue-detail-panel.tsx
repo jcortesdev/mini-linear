@@ -2,6 +2,7 @@
 
 import { getInitials } from '@/lib/issue-meta';
 import { useRemoveIssue, useUpdateIssue } from '@/lib/issue-mutations';
+import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { Trash2, X } from 'lucide-react';
@@ -9,9 +10,11 @@ import { useEffect, useRef } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { AssigneePicker } from './assignee-picker';
+import { Avatar } from './avatar';
 import { DescriptionEditor } from './description-editor';
 import { InlineEditableTitle } from './inline-editable-title';
 import { LabelsPicker } from './labels-picker';
+import { PresenceViewers } from './presence-viewers';
 import { PriorityPicker } from './priority-picker';
 import { StatusPicker } from './status-picker';
 import { useToast } from './toast-provider';
@@ -31,6 +34,8 @@ export function IssueDetailPanel({ id, onClose, fullPage = false }: Props) {
   const update = useUpdateIssue();
   const remove = useRemoveIssue();
   const restore = useMutation(api.issues.restore);
+
+  usePresenceHeartbeat(id);
 
   async function handleDelete() {
     if (!issue) return;
@@ -117,9 +122,10 @@ function Header({
   }, [fullPage]);
 
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+    <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-zinc-200 px-4 dark:border-zinc-800">
       <span className="font-mono text-xs text-zinc-500">LIN-{issue.number}</span>
-      <div className="flex items-center gap-1">
+      <PresenceViewers issueId={issue._id} />
+      <div className="ml-auto flex items-center gap-1">
         <button
           type="button"
           onClick={onDelete}
@@ -215,12 +221,7 @@ function PersonChip({
   const display = person.name ?? person.email ?? 'Member';
   return (
     <span className="flex items-center gap-2 px-2 py-1">
-      <span
-        aria-hidden="true"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-      >
-        {getInitials(display)}
-      </span>
+      <Avatar initials={getInitials(display)} image={person.image} />
       <span>{display}</span>
     </span>
   );
