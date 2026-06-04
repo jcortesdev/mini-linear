@@ -3,6 +3,7 @@
 import { PRIORITY_META, getInitials } from '@/lib/issue-meta';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import type { BoardIssue } from './board-view';
 
@@ -78,6 +79,7 @@ export function BoardCardContent({ issue }: Props) {
 
 export function BoardCard({ issue }: Props) {
   const optimistic = isOptimisticId(issue._id);
+  const reducedMotion = useReducedMotion();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue._id,
     // Optimistic cards have no server-side id yet — disable drag activation so
@@ -88,7 +90,9 @@ export function BoardCard({ issue }: Props) {
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    // Drop the slide-into-place transition when the user prefers reduced
+    // motion — cards still rearrange, they just snap instead of animate.
+    transition: reducedMotion ? undefined : transition,
     opacity: isDragging ? 0.3 : undefined,
   };
 

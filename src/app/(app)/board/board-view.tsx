@@ -1,9 +1,10 @@
 'use client';
 
 import { computeInsertOrder } from '@/lib/board-order';
-import type { IssueStatus } from '@/lib/issue-meta';
+import { type IssueStatus, STATUS_META } from '@/lib/issue-meta';
 import { useUpdateIssue } from '@/lib/issue-mutations';
 import {
+  type Announcements,
   type CollisionDetection,
   DndContext,
   type DragEndEvent,
@@ -19,7 +20,8 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
-import { useEffect, useMemo, useState } from 'react';
+import { useReducedMotion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../../../../convex/_generated/api';
 import { ISSUE_STATUS } from '../../../../convex/schema';
@@ -57,6 +59,7 @@ const collisionDetection: CollisionDetection = (args) => {
 export function BoardView() {
   const issues = useQuery(api.issues.list);
   const updateIssue = useUpdateIssue();
+  const reducedMotion = useReducedMotion();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -68,6 +71,60 @@ export function BoardView() {
   // patch writes `status` + `boardOrder` straight onto the cached list, so
   // the next render of this memo reflects the drop instantly.
   const grouped = useMemo<Grouped>(() => groupByStatus(issues ?? []), [issues]);
+
+  // dnd-kit calls the announcement callbacks outside the render cycle, so we
+  // forward the latest `grouped` via a ref to make sure each announcement
+  // reads the post-optimistic-patch state (especially `onDragEnd`, which
+  // reports the dropped card's NEW position in the destination column).
+  const groupedRef = useRef(grouped);
+  groupedRef.current = grouped;
+
+  const announcements = useMemo<Announcements>(
+    () => ({
+      onDragStart: ({ active }) => {
+        const issue = findIssue(groupedRef.current, active.id as string);
+        return issue ? `Picked up issue LIN-${issue.number}.` : 'Picked up issue.';
+      },
+      onDragOver: ({ active, over }) => {
+        const issue = findIssue(groupedRef.current, active.id as string);
+        const label = issue ? `Issue LIN-${issue.number}` : 'Issue';
+        if (!over) return `${label} is no longer over a droppable area.`;
+        const status =
+          (over.data.current as { status?: IssueStatus } | undefined)?.status ??
+          findStatusOf(groupedRef.current, over.id as string);
+        if (!status) return `${label} is over a droppable area.`;
+        return `${label} is over column ${STATUS_META[status].label}.`;
+      },
+      onDragEnd: ({ active, over }) => {
+        const issue = findIssue(groupedRef.current, active.id as string);
+        const label = issue ? `Issue LIN-${issue.number}` : 'Issue';
+        if (!over) return `${label} dropped outside any column.`;
+        const status =
+          (over.data.current as { status?: IssueStatus } | undefined)?.status ??
+          findStatusOf(groupedRef.current, over.id as string);
+        if (!status) return `${label} dropped.`;
+        const column = groupedRef.current[status];
+        const pos = column.findIndex((i) => i._id === active.id) + 1;
+        return pos > 0
+          ? `${label} moved to column ${STATUS_META[status].label} at position ${pos} of ${column.length}.`
+          : `${label} moved to column ${STATUS_META[status].label}.`;
+      },
+      onDragCancel: ({ active }) => {
+        const issue = findIssue(groupedRef.current, active.id as string);
+        const label = issue ? `Issue LIN-${issue.number}` : 'Issue';
+        return `Movement cancelled. ${label} returned to its original position.`;
+      },
+    }),
+    []
+  );
+
+  const screenReaderInstructions = useMemo(
+    () => ({
+      draggable:
+        'To pick up an issue, press space or enter. While dragging, use the arrow keys to move between cards and columns. Press space or enter again to drop, or escape to cancel.',
+    }),
+    []
+  );
 
   const sensors = useSensors(
     // Distance 8 keeps mouse clicks from triggering a drag — the Link inside
@@ -173,6 +230,7 @@ export function BoardView() {
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}
+        accessibility={{ announcements, screenReaderInstructions }}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
@@ -185,7 +243,7 @@ export function BoardView() {
 
         {mounted &&
           createPortal(
-            <DragOverlay>
+            <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
               {activeIssue ? <BoardCardContent issue={activeIssue} /> : null}
             </DragOverlay>,
             document.body
@@ -218,6 +276,14 @@ function groupByStatus(issues: BoardIssue[]): Grouped {
 function findStatusOf(grouped: Grouped, id: string): IssueStatus | null {
   for (const status of ISSUE_STATUS) {
     if (grouped[status].some((i) => i._id === id)) return status;
+  }
+  return null;
+}
+
+function findIssue(grouped: Grouped, id: string): BoardIssue | null {
+  for (const status of ISSUE_STATUS) {
+    const issue = grouped[status].find((i) => i._id === id);
+    if (issue) return issue;
   }
   return null;
 }
