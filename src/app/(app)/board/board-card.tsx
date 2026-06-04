@@ -93,7 +93,6 @@ export function BoardCard({ issue }: Props) {
     // Drop the slide-into-place transition when the user prefers reduced
     // motion — cards still rearrange, they just snap instead of animate.
     transition: reducedMotion ? undefined : transition,
-    opacity: isDragging ? 0.3 : undefined,
   };
 
   if (optimistic) {
@@ -114,7 +113,30 @@ export function BoardCard({ issue }: Props) {
       {...attributes}
       {...listeners}
     >
-      <BoardCardContent issue={issue} />
+      {isDragging ? <DragSourcePlaceholder issue={issue} /> : <BoardCardContent issue={issue} />}
     </Link>
+  );
+}
+
+/**
+ * Source-slot placeholder shown while the user is dragging a card. Renders a
+ * dashed-border outline at the card's natural size so the layout doesn't jump,
+ * with the card content hidden via `visibility: hidden` (preserving block
+ * dimensions without flashing text underneath).
+ *
+ * Replaces the previous `opacity: 0.3` ghost, which tripped axe's color-contrast
+ * rule (composited opacity → ~1.5:1 against white). The dashed border has no
+ * text content so no contrast rule applies.
+ */
+function DragSourcePlaceholder({ issue }: Props) {
+  return (
+    <div
+      aria-hidden="true"
+      className="rounded-md border-2 border-dashed border-zinc-300 bg-transparent dark:border-zinc-700"
+    >
+      <div className="invisible">
+        <BoardCardContent issue={issue} />
+      </div>
+    </div>
   );
 }

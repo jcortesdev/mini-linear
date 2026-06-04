@@ -119,19 +119,15 @@ test.describe('M4 board view + accessible DnD', () => {
     await card.press('Space');
     await expect(card).toHaveAttribute('aria-pressed', 'true');
 
-    // Two axe flags fire only during pickup and don't reflect real bugs:
+    // One axe flag fires only during pickup and isn't a real bug:
     //  - `region` (best-practice, not WCAG): the DragOverlay portal-mounts a
     //    clone on document.body, outside <main>. Inherent to drag overlays.
-    //  - `color-contrast` (WCAG 2 AA): the source card stays in its slot at
-    //    opacity 0.3 as a "ghost" so the user can see where the drag started.
-    //    Axe composites the opacity into the foreground and flags the
-    //    reduced contrast. The ghost is decorative; the *overlay* clone
-    //    (which the user actually reads while dragging) renders at full
-    //    contrast and stays under axe — we exclude only the source via
-    //    `aria-pressed="true"`, which useSortable sets on the active draggable.
+    //
+    // The M5 dashed-border placeholder (see board-card.tsx) removed the
+    // color-contrast exclusion that the opacity-ghost approach needed: the
+    // placeholder has no text content so axe finds nothing to contrast.
     const axe = await new AxeBuilder({ page })
       .exclude('[data-nextjs-dev-tools-button]')
-      .exclude('[aria-pressed="true"]')
       .disableRules(['region'])
       .analyze();
     expect(axe.violations).toEqual([]);
