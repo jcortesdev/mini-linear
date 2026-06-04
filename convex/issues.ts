@@ -46,6 +46,7 @@ export const list = query({
           title: issue.title,
           status: issue.status,
           priority: issue.priority,
+          boardOrder: issue.boardOrder,
           createdAt: issue.createdAt,
           assignee: assignee
             ? {
@@ -205,6 +206,9 @@ export const update = mutation({
     assigneeId: v.optional(v.union(v.id('users'), v.null())),
     description: v.optional(v.string()),
     labelIds: v.optional(v.array(v.id('labels'))),
+    // Float-index position within its kanban column. The board passes this on
+    // every drag-end; other surfaces never touch it.
+    boardOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -238,6 +242,7 @@ export const update = mutation({
     if (args.assigneeId !== undefined) {
       patch.assigneeId = args.assigneeId ?? undefined;
     }
+    if (args.boardOrder !== undefined) patch.boardOrder = args.boardOrder;
 
     await ctx.db.patch(args.id, patch);
     return await ctx.db.get(args.id);

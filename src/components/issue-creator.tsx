@@ -22,6 +22,9 @@ export function IssueCreator() {
     const existing = localStore.getQuery(api.issues.list, {});
     if (existing === undefined) return;
     const nextNumber = existing.reduce((max, i) => Math.max(max, i.number), 0) + 1;
+    // Mirror the server's `create` policy: append past the current max so the
+    // new card lands at the bottom of the Backlog column on the board.
+    const nextBoardOrder = existing.reduce((max, i) => Math.max(max, i.boardOrder), 0) + 1000;
     localStore.setQuery(api.issues.list, {}, [
       ...existing,
       {
@@ -30,6 +33,7 @@ export function IssueCreator() {
         title: args.title.trim(),
         status: 'backlog',
         priority: 'no_priority',
+        boardOrder: nextBoardOrder,
         createdAt: Date.now(),
         assignee: null,
         labels: [],

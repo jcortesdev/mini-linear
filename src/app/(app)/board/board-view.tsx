@@ -1,6 +1,8 @@
 'use client';
 
+import { computeInsertOrder } from '@/lib/board-order';
 import type { IssueStatus } from '@/lib/issue-meta';
+import { useUpdateIssue } from '@/lib/issue-mutations';
 import {
   type CollisionDetection,
   DndContext,
@@ -14,7 +16,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { useEffect, useMemo, useState } from 'react';
@@ -54,7 +56,7 @@ const collisionDetection: CollisionDetection = (args) => {
 
 export function BoardView() {
   const issues = useQuery(api.issues.list);
-  const [grouped, setGrouped] = useState<Grouped | null>(null);
+  const updateIssue = useUpdateIssue();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -62,15 +64,10 @@ export function BoardView() {
     setMounted(true);
   }, []);
 
-  // Convex memoizes the query result by content equality, so this effect only
-  // re-runs when the underlying data actually changes — but when it does, any
-  // in-progress local reorder is overwritten. That's expected in M4 Task 2;
-  // Task 3 wires the drag to a persisted mutation so the local mirror IS the
-  // server state.
-  useEffect(() => {
-    if (issues === undefined) return;
-    setGrouped(groupByStatus(issues));
-  }, [issues]);
+  // `grouped` is derived from the query — the `useUpdateIssue` optimistic
+  // patch writes `status` + `boardOrder` straight onto the cached list, so
+  // the next render of this memo reflects the drop instantly.
+  const grouped = useMemo<Grouped>(() => groupByStatus(issues ?? []), [issues]);
 
   const sensors = useSensors(
     // Distance 8 keeps mouse clicks from triggering a drag — the Link inside
@@ -80,7 +77,7 @@ export function BoardView() {
   );
 
   const activeIssue = useMemo(() => {
-    if (!activeId || !grouped) return null;
+    if (!activeId) return null;
     for (const status of ISSUE_STATUS) {
       const found = grouped[status].find((i) => i._id === activeId);
       if (found) return found;
@@ -95,7 +92,7 @@ export function BoardView() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveId(null);
-    if (!over || !grouped) return;
+    if (!over) return;
 
     const activeIssueId = active.id as string;
     const overData = over.data.current as
@@ -106,38 +103,50 @@ export function BoardView() {
     const sourceStatus = findStatusOf(grouped, activeIssueId);
     if (!sourceStatus) return;
 
-    // Resolve destination column + insertion index. When dropped on a card,
-    // insert at that card's slot; when dropped on a column (empty space, or
-    // empty column), append to the end.
     const destStatus = overData?.status ?? findStatusOf(grouped, over.id as string);
     if (!destStatus) return;
 
     const droppedOnColumn = overData?.type === 'column';
     if (!droppedOnColumn && active.id === over.id) return;
 
-    setGrouped((prev) => {
-      if (!prev) return prev;
-      const sourceItems = prev[sourceStatus];
-      const destItemsRaw = prev[destStatus];
-      const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
-      if (fromIdx === -1) return prev;
+    const sourceItems = grouped[sourceStatus];
+    const destItems = grouped[destStatus];
+    const fromIdx = sourceItems.findIndex((i) => i._id === activeIssueId);
+    if (fromIdx === -1) return;
+    const activeItem = sourceItems[fromIdx];
 
-      if (sourceStatus === destStatus) {
-        const toIdx = droppedOnColumn
-          ? sourceItems.length - 1
-          : sourceItems.findIndex((i) => i._id === over.id);
-        if (toIdx === -1) return prev;
-        return { ...prev, [sourceStatus]: arrayMove(sourceItems, fromIdx, toIdx) };
-      }
+    // Walk the destination column WITHOUT the active item, find the slot it
+    // lands in, then read the neighbours' boardOrder to compute the new one.
+    const destWithoutActive =
+      sourceStatus === destStatus
+        ? [...destItems.slice(0, fromIdx), ...destItems.slice(fromIdx + 1)]
+        : destItems;
 
-      const toIdx = droppedOnColumn
-        ? destItemsRaw.length
-        : destItemsRaw.findIndex((i) => i._id === over.id);
-      if (toIdx === -1) return prev;
-      const moved = { ...sourceItems[fromIdx], status: destStatus };
-      const nextSource = [...sourceItems.slice(0, fromIdx), ...sourceItems.slice(fromIdx + 1)];
-      const nextDest = [...destItemsRaw.slice(0, toIdx), moved, ...destItemsRaw.slice(toIdx)];
-      return { ...prev, [sourceStatus]: nextSource, [destStatus]: nextDest };
+    let insertIdx: number;
+    if (droppedOnColumn) {
+      insertIdx = destWithoutActive.length;
+    } else {
+      const overIdx = destWithoutActive.findIndex((i) => i._id === over.id);
+      if (overIdx === -1) return;
+      insertIdx = overIdx;
+    }
+
+    const prev = destWithoutActive[insertIdx - 1]?.boardOrder;
+    const next = destWithoutActive[insertIdx]?.boardOrder;
+    const boardOrder = computeInsertOrder({ prev, next });
+
+    // Skip if the move is a no-op (same column, same slot, same boardOrder).
+    if (
+      sourceStatus === destStatus &&
+      activeItem.boardOrder === boardOrder &&
+      destItems[insertIdx]?._id === activeIssueId
+    ) {
+      return;
+    }
+
+    updateIssue({ id: activeItem._id, status: destStatus, boardOrder }).catch(() => {
+      // The optimistic write rolls back automatically; we swallow the error
+      // here so a transient network blip doesn't surface a raw exception.
     });
   }
 
@@ -145,7 +154,7 @@ export function BoardView() {
     setActiveId(null);
   }
 
-  if (issues === undefined || grouped === null) return <BoardSkeleton />;
+  if (issues === undefined) return <BoardSkeleton />;
 
   return (
     <div className="flex h-full flex-col">
@@ -197,6 +206,11 @@ function groupByStatus(issues: BoardIssue[]): Grouped {
   };
   for (const issue of issues) {
     buckets[issue.status].push(issue);
+  }
+  // Each column renders in ascending `boardOrder`. Ties are broken by the
+  // server-assigned `number` so the order is fully deterministic.
+  for (const status of ISSUE_STATUS) {
+    buckets[status].sort((a, b) => a.boardOrder - b.boardOrder || a.number - b.number);
   }
   return buckets;
 }
