@@ -23,6 +23,7 @@ export function useUpdateIssue() {
       if (args.status !== undefined) next.status = args.status;
       if (args.priority !== undefined) next.priority = args.priority;
       if (args.description !== undefined) next.description = args.description;
+      if (args.boardOrder !== undefined) next.boardOrder = args.boardOrder;
       if (args.assigneeId !== undefined) {
         if (args.assigneeId === null) {
           next.assignee = null;
