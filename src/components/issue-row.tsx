@@ -32,6 +32,19 @@ export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
 ) {
   const update = useUpdateIssue();
 
+  // Bring focus onto the row when the user mouses down on empty space inside
+  // it (not on a sub-interactive: pickers, the title button, the LIN link).
+  // Keyboard users already get focus via roving tabindex; this aligns mouse
+  // users with the same focused-row affordance.
+  function handleMouseDown(event: React.MouseEvent<HTMLLIElement>) {
+    const target = event.target as HTMLElement;
+    if (target.closest('a, button, input, [role="listbox"], [contenteditable="true"]')) return;
+    onFocus();
+    // tabIndex flips to 0 on the next render via `focused`; .focus() works
+    // synchronously even on tabIndex=-1 elements so we don't need to wait.
+    (event.currentTarget as HTMLLIElement).focus();
+  }
+
   return (
     <li
       ref={ref}
@@ -39,6 +52,7 @@ export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
       data-issue-id={issue._id}
       tabIndex={focused ? 0 : -1}
       onFocus={onFocus}
+      onMouseDown={handleMouseDown}
       className="flex items-center gap-3 border-b border-zinc-200 px-4 py-2 outline-none transition hover:bg-zinc-50 focus-visible:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900/60 dark:focus-visible:bg-zinc-900"
     >
       <PriorityPicker issueId={issue._id} priority={issue.priority} />
