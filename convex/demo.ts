@@ -1,3 +1,4 @@
+import { ConvexError, v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { type MutationCtx, internalMutation } from './_generated/server';
 
@@ -210,3 +211,31 @@ export async function ensureDemoMembership(
 
   return workspaceId;
 }
+
+/**
+ * Internal admin mutation. Hard-deletes every issue across every workspace
+ * whose title starts with the given prefix. Companion to the auth-required
+ * `issues:purgeByTitlePrefix` (which only sees the caller's workspace) — this
+ * one is callable from `convex run` for routine dev-DB cleanup after e2e
+ * suites accumulate `[e2e]`, `[e2e-m3]`, etc. artifacts.
+ *
+ * Why a separate function and not just lift auth from purgeByTitlePrefix?
+ * The auth-checked one stays in `issues.ts` because the Playwright suite
+ * uses it from the authenticated test session — losing that auth would let
+ * one user purge another user's data via the public API. This one is
+ * `internalMutation`, so it cannot be reached from the client at all.
+ *
+ * Run with: `pnpm exec convex run demo:purgeE2eByPrefix '{"prefix":"[e2e]"}'`
+ */
+export const purgeE2eByPrefix = internalMutation({
+  args: { prefix: v.string() },
+  handler: async (ctx, { prefix }) => {
+    if (prefix.trim().length < 3) {
+      throw new ConvexError('Prefix must be at least 3 characters.');
+    }
+    const all = await ctx.db.query('issues').collect();
+    const targets = all.filter((i) => i.title.startsWith(prefix));
+    await Promise.all(targets.map((i) => ctx.db.delete(i._id)));
+    return { deleted: targets.length };
+  },
+});

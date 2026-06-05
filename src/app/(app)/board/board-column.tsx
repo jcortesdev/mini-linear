@@ -47,7 +47,9 @@ export function BoardColumn({ status, issues, visibleOnMobile = true }: Props) {
           ref={setNodeRef}
           aria-label={`${meta.label} issues`}
           className={`flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 transition-colors ${
-            isOver ? 'bg-zinc-100 dark:bg-zinc-900' : ''
+            // Base column bg is zinc-50 / zinc-900/60 — the previous zinc-100
+            // hover provided ~no contrast in light mode. Bumped to zinc-200.
+            isOver ? 'bg-zinc-200 dark:bg-zinc-900' : ''
           }`}
         >
           {issues.length === 0 ? (

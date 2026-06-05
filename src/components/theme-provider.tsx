@@ -36,40 +36,57 @@ function resolveTheme(mode: ThemeMode): ResolvedTheme {
  * Three-way theme controller (light / dark / system). The actual `data-theme`
  * attribute is set by the inline anti-flash script in the root layout BEFORE
  * React hydrates, so the initial paint already matches the user's choice.
- * This provider keeps the state in sync after hydration and persists user
- * choices to localStorage.
+ * This provider keeps state in sync after hydration and persists user choices
+ * to localStorage.
+ *
+ * Both `mode` and `resolved` start at deterministic defaults so SSR and the
+ * first client render produce identical output (otherwise the toggle's
+ * `aria-pressed` and active classes differ → hydration mismatch warning).
+ * A mount-once effect reads the real values (localStorage + the data-theme
+ * attribute the anti-flash script set on <html>) and pushes them into state.
+ * Until that effect runs, we leave `<html data-theme>` alone — the anti-flash
+ * script is the source of truth for the very first paint.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Initialise from localStorage so React's first render matches what the
-  // anti-flash script already set. SSR returns 'system' — the inline script
-  // reconciles before hydration so there's no flash.
-  const [mode, setModeState] = useState<ThemeMode>(() =>
-    typeof window === 'undefined' ? 'system' : readStoredMode()
-  );
-  const [resolved, setResolved] = useState<ResolvedTheme>(() =>
-    typeof window === 'undefined' ? 'light' : resolveTheme(readStoredMode())
-  );
+  const [mode, setModeState] = useState<ThemeMode>('system');
+  const [resolved, setResolved] = useState<ResolvedTheme>('light');
+  const [hydrated, setHydrated] = useState(false);
 
-  // Apply the data-theme attribute whenever the resolution changes.
+  // Mount-once: sync React state to what the anti-flash script + localStorage
+  // already established. After this fires, the data-theme effect below takes
+  // over and pushes future changes into the DOM.
   useEffect(() => {
+    const stored = readStoredMode();
+    const dom = document.documentElement.dataset.theme;
+    setModeState(stored);
+    setResolved(dom === 'dark' ? 'dark' : 'light');
+    setHydrated(true);
+  }, []);
+
+  // Keep <html data-theme> in sync with `resolved` — but only after the
+  // initial sync above, so we don't overwrite the anti-flash value during
+  // the first commit.
+  useEffect(() => {
+    if (!hydrated) return;
     document.documentElement.dataset.theme = resolved;
-  }, [resolved]);
+  }, [hydrated, resolved]);
 
-  // Recompute the resolved theme whenever the mode changes.
+  // Recompute the resolved theme whenever the mode changes (post-hydration).
   useEffect(() => {
+    if (!hydrated) return;
     setResolved(resolveTheme(mode));
-  }, [mode]);
+  }, [hydrated, mode]);
 
-  // When in 'system' mode, follow OS changes live.
+  // Follow OS changes live when in 'system' mode.
   useEffect(() => {
-    if (mode !== 'system') return;
+    if (!hydrated || mode !== 'system') return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = (event: MediaQueryListEvent) => {
       setResolved(event.matches ? 'dark' : 'light');
     };
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
-  }, [mode]);
+  }, [hydrated, mode]);
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);

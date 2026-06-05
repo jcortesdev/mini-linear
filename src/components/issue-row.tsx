@@ -3,6 +3,7 @@
 import { useUpdateIssue } from '@/lib/issue-mutations';
 import type { FunctionReturnType } from 'convex/server';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { forwardRef } from 'react';
 import type { api } from '../../convex/_generated/api';
 import { AssigneePicker } from './assignee-picker';
@@ -31,6 +32,13 @@ export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
   ref
 ) {
   const update = useUpdateIssue();
+  const pathname = usePathname();
+  // When the slide-over is already open (URL is /issues/{id}), clicking another
+  // row should REPLACE the current history entry, not push a new one. Otherwise
+  // closing with the X would pop back to the previously-opened issue instead of
+  // returning to /issues or /board. The slide-over swaps issues in place by
+  // design (non-modal), so each swap is a navigation we don't want to remember.
+  const inSlideOver = pathname?.startsWith('/issues/') ?? false;
 
   // Bring focus onto the row when the user mouses down on empty space inside
   // it (not on a sub-interactive: pickers, the title button, the LIN link).
@@ -68,6 +76,7 @@ export const IssueRow = forwardRef<HTMLLIElement, Props>(function IssueRow(
       ) : (
         <Link
           href={`/issues/${issue._id}`}
+          replace={inSlideOver}
           data-issue-row-id={issue._id}
           className="flex w-16 shrink-0 items-center font-mono text-xs text-zinc-500 focus:outline-none focus-visible:underline dark:text-zinc-500"
         >

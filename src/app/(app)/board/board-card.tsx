@@ -5,6 +5,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { BoardIssue } from './board-view';
 
 type Props = {
@@ -80,6 +81,11 @@ export function BoardCardContent({ issue }: Props) {
 export function BoardCard({ issue }: Props) {
   const optimistic = isOptimisticId(issue._id);
   const reducedMotion = useReducedMotion();
+  const pathname = usePathname();
+  // Same rationale as IssueRow: when the slide-over is already open (URL is
+  // /issues/{id}), swap navigation should REPLACE instead of PUSH so the X
+  // close button returns to /board, not to the previously-opened issue.
+  const inSlideOver = pathname?.startsWith('/issues/') ?? false;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue._id,
     // Optimistic cards have no server-side id yet — disable drag activation so
@@ -107,6 +113,7 @@ export function BoardCard({ issue }: Props) {
     <Link
       ref={setNodeRef}
       href={`/issues/${issue._id}`}
+      replace={inSlideOver}
       data-issue-card-id={issue._id}
       // Always-on accessible name — when isDragging, the inner content is
       // `visibility:hidden` so the title text is no longer in the a11y tree;

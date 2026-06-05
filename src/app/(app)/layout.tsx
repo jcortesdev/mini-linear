@@ -21,7 +21,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <Topbar />
-            <main id="main" tabIndex={-1} className="flex-1 overflow-auto">
+            <main
+              id="main"
+              tabIndex={-1}
+              // `tabIndex={-1}` makes <main> a focus target for both the skip
+              // link and Next.js's automatic focus on route change, but it is
+              // not a user-interactive element — never show a ring on it.
+              className="flex-1 overflow-auto focus:outline-none"
+            >
               {children}
             </main>
           </div>
