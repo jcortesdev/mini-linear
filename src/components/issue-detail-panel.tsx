@@ -26,9 +26,12 @@ const DescriptionEditor = dynamic(
   () => import('./description-editor-tiptap').then((m) => m.DescriptionEditor),
   {
     ssr: false,
+    // The skeleton is purely visual — `aria-hidden` keeps it out of the a11y
+    // tree (an `aria-label` on a bare <div> trips axe's aria-prohibited-attr
+    // rule since the element has no role).
     loading: () => (
       <div
-        aria-label="Loading description editor"
+        aria-hidden="true"
         className="min-h-[6rem] animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-900"
       />
     ),

@@ -34,7 +34,9 @@ export function Topbar() {
         <button
           type="button"
           onClick={() => palette.setOpen(true)}
-          className="flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-500 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 sm:h-auto sm:py-1.5"
+          // text-zinc-600 (4.5+:1 vs white) to clear AA. zinc-500 was on the
+          // contrast cliff and axe flagged it in mixed-state scans.
+          className="flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-600 transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 sm:h-auto sm:py-1.5"
           aria-label="Open command palette"
         >
           <Search className="h-4 w-4 sm:h-3.5 sm:w-3.5" aria-hidden="true" />

@@ -23,6 +23,10 @@ test.describe('M5 description editor (Tiptap)', () => {
     await expect(page.getByRole('heading', { name: /^issues$/i })).toBeVisible({
       timeout: 15_000,
     });
+    // IssueCreator's `c` shortcut listener mounts only after the list query
+    // resolves. Wait for the first row so `createIssue` doesn't press `c` into
+    // a void.
+    await expect(page.locator('li[data-row-index="0"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test.afterEach(async ({ page }) => {

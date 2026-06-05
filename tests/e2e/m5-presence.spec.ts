@@ -64,6 +64,8 @@ async function signInAsDemo(page: Page) {
   await page.goto('/sign-in');
   await page.getByRole('button', { name: /try the demo/i }).click();
   await expect(page.getByRole('heading', { name: /^issues$/i })).toBeVisible({ timeout: 15_000 });
+  // The list query must resolve before IssueCreator's `c` listener mounts.
+  await expect(page.locator('li[data-row-index="0"]')).toBeVisible({ timeout: 10_000 });
 }
 
 async function createIssue(page: Page, title: string) {

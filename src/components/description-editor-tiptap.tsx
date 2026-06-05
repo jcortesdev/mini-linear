@@ -83,6 +83,11 @@ export function DescriptionEditor({ issueId, initialValue }: Props) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
+        // Explicit role: contenteditable's implicit role is "textbox" per ARIA,
+        // but axe doesn't always detect it on a plain <div> and flags the
+        // aria-label as prohibited without a role attribute.
+        role: 'textbox',
+        'aria-multiline': 'true',
         'aria-label': 'Issue description',
         class:
           'prose prose-sm prose-zinc max-w-none focus:outline-none dark:prose-invert min-h-[6rem]',

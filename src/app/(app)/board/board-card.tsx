@@ -108,6 +108,10 @@ export function BoardCard({ issue }: Props) {
       ref={setNodeRef}
       href={`/issues/${issue._id}`}
       data-issue-card-id={issue._id}
+      // Always-on accessible name — when isDragging, the inner content is
+      // `visibility:hidden` so the title text is no longer in the a11y tree;
+      // without this aria-label axe (rightly) flags a link with no name.
+      aria-label={`LIN-${issue.number}: ${issue.title}`}
       style={style}
       className="block touch-none focus:outline-none"
       {...attributes}
