@@ -2,6 +2,7 @@
 
 import { usePalette } from '@/components/palette/palette-provider';
 import { SidebarDrawerTrigger } from '@/components/sidebar-drawer';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { getInitials } from '@/lib/issue-meta';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useQuery } from 'convex/react';
@@ -45,6 +46,7 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        <ThemeToggle />
         <span
           aria-label={displayName}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900 sm:hidden"
