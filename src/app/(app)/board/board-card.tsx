@@ -5,6 +5,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { BoardIssue } from './board-view';
 
 type Props = {
@@ -80,6 +81,11 @@ export function BoardCardContent({ issue }: Props) {
 export function BoardCard({ issue }: Props) {
   const optimistic = isOptimisticId(issue._id);
   const reducedMotion = useReducedMotion();
+  const pathname = usePathname();
+  // Same rationale as IssueRow: when the slide-over is already open (URL is
+  // /issues/{id}), swap navigation should REPLACE instead of PUSH so the X
+  // close button returns to /board, not to the previously-opened issue.
+  const inSlideOver = pathname?.startsWith('/issues/') ?? false;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: issue._id,
     // Optimistic cards have no server-side id yet — disable drag activation so
@@ -93,7 +99,6 @@ export function BoardCard({ issue }: Props) {
     // Drop the slide-into-place transition when the user prefers reduced
     // motion — cards still rearrange, they just snap instead of animate.
     transition: reducedMotion ? undefined : transition,
-    opacity: isDragging ? 0.3 : undefined,
   };
 
   if (optimistic) {
@@ -108,13 +113,41 @@ export function BoardCard({ issue }: Props) {
     <Link
       ref={setNodeRef}
       href={`/issues/${issue._id}`}
+      replace={inSlideOver}
       data-issue-card-id={issue._id}
+      // Always-on accessible name — when isDragging, the inner content is
+      // `visibility:hidden` so the title text is no longer in the a11y tree;
+      // without this aria-label axe (rightly) flags a link with no name.
+      aria-label={`LIN-${issue.number}: ${issue.title}`}
       style={style}
       className="block touch-none focus:outline-none"
       {...attributes}
       {...listeners}
     >
-      <BoardCardContent issue={issue} />
+      {isDragging ? <DragSourcePlaceholder issue={issue} /> : <BoardCardContent issue={issue} />}
     </Link>
+  );
+}
+
+/**
+ * Source-slot placeholder shown while the user is dragging a card. Renders a
+ * dashed-border outline at the card's natural size so the layout doesn't jump,
+ * with the card content hidden via `visibility: hidden` (preserving block
+ * dimensions without flashing text underneath).
+ *
+ * Replaces the previous `opacity: 0.3` ghost, which tripped axe's color-contrast
+ * rule (composited opacity → ~1.5:1 against white). The dashed border has no
+ * text content so no contrast rule applies.
+ */
+function DragSourcePlaceholder({ issue }: Props) {
+  return (
+    <div
+      aria-hidden="true"
+      className="rounded-md border-2 border-dashed border-zinc-300 bg-transparent dark:border-zinc-700"
+    >
+      <div className="invisible">
+        <BoardCardContent issue={issue} />
+      </div>
+    </div>
   );
 }

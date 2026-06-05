@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuthActions } from '@convex-dev/auth/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GitHubIcon, GoogleIcon, LinkedInIcon, MailIcon, SparklesIcon } from './provider-icons';
 
 type OAuthProvider = 'github' | 'google' | 'linkedin';
@@ -12,12 +12,26 @@ const OAUTH_PROVIDERS: { id: OAuthProvider; label: string; icon: React.ReactNode
   { id: 'linkedin', label: 'Continue with LinkedIn', icon: <LinkedInIcon /> },
 ];
 
+const RESEND_COOLDOWN_SECONDS = 30;
+
 export default function SignInPage() {
   const { signIn } = useAuthActions();
   const [email, setEmail] = useState('');
   const [emailState, setEmailState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [sentToEmail, setSentToEmail] = useState<string | null>(null);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const [demoState, setDemoState] = useState<'idle' | 'joining' | 'error'>('idle');
+
+  // 30-second resend cooldown after a successful send. The interval is reset
+  // each time `setCooldownLeft(RESEND_COOLDOWN_SECONDS)` fires (a fresh send).
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldownLeft((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldownLeft]);
 
   async function handleOAuth(provider: OAuthProvider) {
     setPendingProvider(provider);
@@ -35,6 +49,8 @@ export default function SignInPage() {
     try {
       await signIn('resend', { email, redirectTo: '/issues' });
       setEmailState('sent');
+      setSentToEmail(email);
+      setCooldownLeft(RESEND_COOLDOWN_SECONDS);
     } catch {
       setEmailState('error');
     }
@@ -53,6 +69,11 @@ export default function SignInPage() {
 
   const anyPending =
     pendingProvider !== null || emailState === 'sending' || demoState === 'joining';
+  const isResend = emailState === 'sent';
+  // Disable the submit while sending, during the resend cooldown, or while
+  // another provider is mid-flight. The input stays enabled so the user can
+  // correct typos and resend once the cooldown ends.
+  const submitDisabled = anyPending || (isResend && cooldownLeft > 0);
 
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-12">
@@ -123,18 +144,26 @@ export default function SignInPage() {
           />
           <button
             type="submit"
-            disabled={anyPending || emailState === 'sent'}
+            disabled={submitDisabled}
             className="flex w-full items-center justify-center gap-2.5 rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <MailIcon />
             <span>
               {emailState === 'sending'
                 ? 'Sending…'
-                : emailState === 'sent'
-                  ? 'Check your inbox'
+                : isResend
+                  ? cooldownLeft > 0
+                    ? `Resend in ${cooldownLeft}s`
+                    : 'Resend magic link'
                   : 'Send magic link'}
             </span>
           </button>
+          {emailState === 'sent' && sentToEmail && (
+            <output aria-live="polite" className="block text-sm text-zinc-600 dark:text-zinc-400">
+              Magic link sent to <span className="font-medium">{sentToEmail}</span>. Check your spam
+              folder too.
+            </output>
+          )}
           {emailState === 'error' && (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">
               Something went wrong sending the magic link. Please try again.

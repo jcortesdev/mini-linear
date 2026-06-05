@@ -2,19 +2,41 @@
 
 import { getInitials } from '@/lib/issue-meta';
 import { useRemoveIssue, useUpdateIssue } from '@/lib/issue-mutations';
+import { usePresenceHeartbeat } from '@/lib/use-presence-heartbeat';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { Trash2, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useEffect, useRef } from 'react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { AssigneePicker } from './assignee-picker';
-import { DescriptionEditor } from './description-editor';
+import { Avatar } from './avatar';
 import { InlineEditableTitle } from './inline-editable-title';
 import { LabelsPicker } from './labels-picker';
+import { PresenceViewers } from './presence-viewers';
 import { PriorityPicker } from './priority-picker';
 import { StatusPicker } from './status-picker';
 import { useToast } from './toast-provider';
+
+// Tiptap brings ~85 kB gzipped — load it only when a detail panel actually
+// mounts so the /issues list bundle stays lean. SSR off because Tiptap
+// initialises ProseMirror with a browser DOM reference.
+const DescriptionEditor = dynamic(
+  () => import('./description-editor-tiptap').then((m) => m.DescriptionEditor),
+  {
+    ssr: false,
+    // The skeleton is purely visual — `aria-hidden` keeps it out of the a11y
+    // tree (an `aria-label` on a bare <div> trips axe's aria-prohibited-attr
+    // rule since the element has no role).
+    loading: () => (
+      <div
+        aria-hidden="true"
+        className="min-h-[6rem] animate-pulse rounded-md bg-zinc-100 dark:bg-zinc-900"
+      />
+    ),
+  }
+);
 
 type Issue = NonNullable<FunctionReturnType<typeof api.issues.get>>;
 
@@ -31,6 +53,8 @@ export function IssueDetailPanel({ id, onClose, fullPage = false }: Props) {
   const update = useUpdateIssue();
   const remove = useRemoveIssue();
   const restore = useMutation(api.issues.restore);
+
+  usePresenceHeartbeat(id);
 
   async function handleDelete() {
     if (!issue) return;
@@ -91,7 +115,16 @@ export function IssueDetailPanel({ id, onClose, fullPage = false }: Props) {
 
         <Metadata issue={issue} />
 
-        <section aria-labelledby="issue-description-heading" className="mt-6">
+        <section aria-labelledby="issue-description-heading" className="mt-6 space-y-2">
+          {/* Heading lives here, not inside the lazy-loaded editor — otherwise
+              the section's aria-labelledby dangles during the dynamic-import
+              skeleton phase and axe flags aria-prohibited-attr. */}
+          <h2
+            id="issue-description-heading"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500"
+          >
+            Description
+          </h2>
           <DescriptionEditor issueId={issue._id} initialValue={issue.description} />
         </section>
       </div>
@@ -117,9 +150,10 @@ function Header({
   }, [fullPage]);
 
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+    <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-zinc-200 px-4 dark:border-zinc-800">
       <span className="font-mono text-xs text-zinc-500">LIN-{issue.number}</span>
-      <div className="flex items-center gap-1">
+      <PresenceViewers issueId={issue._id} />
+      <div className="ml-auto flex items-center gap-1">
         <button
           type="button"
           onClick={onDelete}
@@ -215,12 +249,7 @@ function PersonChip({
   const display = person.name ?? person.email ?? 'Member';
   return (
     <span className="flex items-center gap-2 px-2 py-1">
-      <span
-        aria-hidden="true"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-      >
-        {getInitials(display)}
-      </span>
+      <Avatar initials={getInitials(display)} image={person.image} />
       <span>{display}</span>
     </span>
   );

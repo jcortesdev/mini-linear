@@ -1,9 +1,24 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-:root {
+/*
+ * Tailwind v4 ships `dark:` driven by `prefers-color-scheme` by default. We
+ * override it so the variant matches any element under `[data-theme="dark"]`
+ * — the ThemeProvider toggles that attribute on <html>, with an anti-flash
+ * script in the root layout reading localStorage + system pref before the
+ * first paint.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="light"] {
   --background: #ffffff;
   --foreground: #171717;
+}
+
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -11,13 +26,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

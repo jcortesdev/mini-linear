@@ -139,7 +139,7 @@ export function CommandPalette() {
       onOpenChange={setOpen}
       label="Command palette"
       overlayClassName="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm data-[state=open]:opacity-100 data-[state=closed]:opacity-0 motion-reduce:transition-none transition-opacity duration-150"
-      contentClassName="fixed left-1/2 top-[18%] z-[100] w-[640px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl outline-none data-[state=open]:opacity-100 data-[state=closed]:opacity-0 motion-reduce:transition-none transition-opacity duration-150 dark:border-zinc-800 dark:bg-zinc-950"
+      contentClassName="fixed inset-x-0 top-0 z-[100] h-full w-full overflow-hidden border-b border-zinc-200 bg-white shadow-2xl outline-none data-[state=open]:opacity-100 data-[state=closed]:opacity-0 motion-reduce:transition-none transition-opacity duration-150 dark:border-zinc-800 dark:bg-zinc-950 sm:left-1/2 sm:right-auto sm:top-[18%] sm:h-auto sm:w-[640px] sm:max-w-[calc(100vw-2rem)] sm:-translate-x-1/2 sm:rounded-lg sm:border"
     >
       {/* Radix Dialog requires a Title + Description for screen readers; cmdk
           does not inject them automatically. */}

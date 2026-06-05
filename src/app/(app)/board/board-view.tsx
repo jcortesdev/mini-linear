@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   pointerWithin,
   rectIntersection,
   useSensor,
@@ -21,10 +22,12 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { useReducedMotion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../../../../convex/_generated/api';
 import { ISSUE_STATUS } from '../../../../convex/schema';
+import { type Option, OptionsPopover } from '../../../components/options-popover';
 import { BoardCardContent } from './board-card';
 import { BoardColumn } from './board-column';
 
@@ -62,6 +65,11 @@ export function BoardView() {
   const reducedMotion = useReducedMotion();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  // Mobile-only filter: which status column is visible below `md`. Defaults
+  // to 'todo' as the column most users want to see first. Cross-status moves
+  // are deliberately routed through the issue detail's status picker on
+  // touch — dragging across six columns on a phone is the wrong UX.
+  const [mobileStatus, setMobileStatus] = useState<IssueStatus>('todo');
 
   useEffect(() => {
     setMounted(true);
@@ -130,6 +138,10 @@ export function BoardView() {
     // Distance 8 keeps mouse clicks from triggering a drag — the Link inside
     // each card still navigates to the slide-over on a plain click.
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    // Touch: long-press 200ms separates "tap to navigate" from "drag to
+    // reorder" on phones. Tolerance lets a small finger wiggle still count
+    // as a long-press instead of a scroll.
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -235,9 +247,24 @@ export function BoardView() {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex flex-1 gap-3 overflow-x-auto overflow-y-hidden p-3">
+        <MobileStatusFilter
+          selected={mobileStatus}
+          onChange={setMobileStatus}
+          counts={
+            Object.fromEntries(ISSUE_STATUS.map((s) => [s, grouped[s].length])) as Record<
+              IssueStatus,
+              number
+            >
+          }
+        />
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-x-auto md:overflow-y-hidden">
           {ISSUE_STATUS.map((status) => (
-            <BoardColumn key={status} status={status} issues={grouped[status]} />
+            <BoardColumn
+              key={status}
+              status={status}
+              issues={grouped[status]}
+              visibleOnMobile={status === mobileStatus}
+            />
           ))}
         </div>
 
@@ -278,6 +305,70 @@ function findStatusOf(grouped: Grouped, id: string): IssueStatus | null {
     if (grouped[status].some((i) => i._id === id)) return status;
   }
   return null;
+}
+
+/**
+ * Sticky dropdown shown below `md` only. Lets the user pick which status
+ * column to view; the rest are hidden via `visibleOnMobile` on BoardColumn
+ * so the board fits a portrait phone. Reuses the M2 `OptionsPopover` so the
+ * a11y / keyboard / portal behaviour matches the rest of the app's pickers.
+ */
+function MobileStatusFilter({
+  selected,
+  onChange,
+  counts,
+}: {
+  selected: IssueStatus;
+  onChange: (next: IssueStatus) => void;
+  counts: Record<IssueStatus, number>;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const selectedMeta = STATUS_META[selected];
+  const SelectedIcon = selectedMeta.icon;
+  const totalIssues = `${counts[selected]} ${counts[selected] === 1 ? 'issue' : 'issues'}`;
+
+  const options: Option<IssueStatus>[] = ISSUE_STATUS.map((status) => {
+    const meta = STATUS_META[status];
+    const Icon = meta.icon;
+    const n = counts[status];
+    return {
+      value: status,
+      label: meta.label,
+      description: `${n} ${n === 1 ? 'issue' : 'issues'}`,
+      icon: <Icon aria-hidden="true" className={`h-4 w-4 ${meta.iconClass}`} />,
+    };
+  });
+
+  return (
+    <div className="sticky top-0 z-10 shrink-0 border-b border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950 md:hidden">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Filter by status: ${selectedMeta.label}, ${totalIssues}. Click to change`}
+        className="flex h-9 w-full items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+      >
+        <SelectedIcon aria-hidden="true" className={`h-4 w-4 ${selectedMeta.iconClass}`} />
+        <span className="flex-1 text-left">{selectedMeta.label}</span>
+        <span aria-hidden="true" className="text-xs tabular-nums text-zinc-500">
+          {counts[selected]}
+        </span>
+        <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-zinc-400" />
+      </button>
+      <OptionsPopover
+        anchorRef={triggerRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        options={options}
+        value={selected}
+        onSelect={(next) => onChange(next)}
+        label="Filter by status"
+      />
+    </div>
+  );
 }
 
 function findIssue(grouped: Grouped, id: string): BoardIssue | null {

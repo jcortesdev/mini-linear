@@ -1,7 +1,7 @@
 'use client';
 
 import { type KeySequenceMatcher, createKeySequenceMatcher } from '@/lib/key-sequence';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   createContext,
   useCallback,
@@ -48,6 +48,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const [pendingNewIssue, setPendingNewIssue] = useState(false);
   const [pendingSearch, setPendingSearch] = useState<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
   const matcherRef = useRef<KeySequenceMatcher | null>(null);
   // Radix Dialog's FocusScope snapshots `activeElement` at mount, but cmdk's
   // Command.Input auto-focuses synchronously during the same render — so the
@@ -113,6 +114,27 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [snapshotFocus]);
+
+  // `c` from anywhere opens the issue creator. The creator only mounts on
+  // /issues, so from /board (or any /issues/{id}) we navigate there first and
+  // queue `pendingNewIssue`; the creator's mount-effect consumes the flag and
+  // expands on landing. Skip while editing/typing or with modifiers so it
+  // doesn't collide with ctrl+c / typing a literal "c".
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'c') return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (open) return;
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      if (pathname !== '/issues') {
+        router.push('/issues');
+      }
+      requestNewIssue();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, pathname, router, requestNewIssue]);
 
   // Leader-key sequences (`g i`, `g b`, `?`) — skip while the palette has the
   // keyboard or while the user is typing in a form field.

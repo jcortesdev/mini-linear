@@ -73,27 +73,6 @@ export function IssueCreator() {
     }
   }, [palette.pendingNewIssue, palette.consumePendingNewIssue, expand]);
 
-  // `c` from anywhere opens the creator. Skip when the user is already typing
-  // in a form field, editing content, or holding a modifier — those collisions
-  // would feel buggy (e.g. ctrl+c to copy).
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'c') return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
-          return;
-        }
-      }
-      event.preventDefault();
-      expand();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [expand]);
-
   async function submit() {
     const trimmed = title.trim();
     if (!trimmed) {

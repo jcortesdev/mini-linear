@@ -337,3 +337,327 @@ ADRs that are obvious in hindsight (use TypeScript, use Tailwind, use pnpm) are 
 - ✅ Radix Dialog dev warnings silenced.
 - ✅ Screen reader users get a proper Dialog Title and Description.
 - ⚠️ One more entry in `package.json`. Trivial cost.
+
+---
+
+## ADR-013: `pointerWithin` + card-preference + `rectIntersection` for kanban collision
+
+**Context:** dnd-kit's default collision strategy `closestCorners` measures distance from the active item's corners to droppable corners. For a kanban where most columns are empty (the demo workspace starts with issues only in two columns), it consistently preferred a card in a busy adjacent column over the empty column the cursor was visibly inside. The drop felt broken: drag into an empty Todo column with the cursor squarely inside its rectangle, drop, watch the card land back in In Progress because a card there was a few pixels closer to a corner.
+
+**Decision:** Custom `collisionDetection` callback. Run `pointerWithin(args)` first — that returns droppables whose rect contains the pointer. If anything matches, sort cards before columns (so dropping on a slot inserts there instead of appending). If nothing matches (keyboard drag, no pointer), fall back to `rectIntersection(args)`.
+
+**Why this strategy:**
+
+- **Pointer position is the user's intent.** When the cursor is over an empty column rectangle, the user wants to drop there. `pointerWithin` codifies that.
+- **Card-over-column preference** keeps the "drop on a specific slot" behavior. Without the sort, dropping on a card would frequently resolve to the column droppable behind it and append instead of insert at the slot.
+- **`rectIntersection` for keyboard** because there's no cursor. dnd-kit's `KeyboardSensor` translates arrows into bounding-box overlap.
+- **Standard pattern.** Linear / Trello / Jira-style multi-container DnD examples in the dnd-kit docs use this exact combination.
+
+**Why a different strategy:**
+
+- The board has only one container and reordering is intra-list. `closestCenter` would be the canonical answer.
+- The empty-column problem doesn't exist (every column always has ≥ 1 card). Then `closestCorners` is fine.
+
+**Consequences:**
+
+- ✅ Drops into empty columns work intuitively.
+- ✅ Dropping precisely between two cards inserts at that slot.
+- ⚠️ The card-preference sort runs on every pointermove during a drag. Cheap (O(n) over visible droppables) but worth knowing.
+
+---
+
+## ADR-014: Dashed-border source placeholder (not opacity ghost)
+
+**Context:** During a drag, the source card needs some visual treatment to (a) show the user where the card came from and (b) preserve the layout so cards below don't shift. The canonical dnd-kit demo uses `opacity: 0.3` on the source while the `DragOverlay` portal renders the dragged clone at full opacity. The composited 30% opacity tripped axe's `color-contrast` rule (axe computes effective foreground = `rgba(text, 0.3)` over white = ~1.5:1 contrast). The pickup axe test had to exclude the ghost via `[aria-pressed="true"]` to pass.
+
+**Decision:** Replace the opacity ghost with a **dashed-border placeholder**. While `isDragging` is true, render the card content inside a wrapper with `visibility: hidden` (preserves dimensions, removes from a11y tree) and overlay a dashed-border outline. Drop the `[aria-pressed="true"]` axe exclusion.
+
+**Why dashed-border:**
+
+- **No text inside the placeholder** → nothing for axe's color-contrast rule to evaluate → the exclusion goes away cleanly.
+- **Layout is preserved** by keeping the hidden content sized via `visibility: hidden` (not `display: none`).
+- **The pattern is widely understood** (Trello / Jira / Linear all use a dashed slot for the source during drag).
+
+**Why opacity instead:**
+
+- The card needs to remain readable during drag (some users prefer to see context). For this app the DragOverlay clone covers that need — it's at full contrast and tracks the cursor.
+
+**Consequences:**
+
+- ✅ Pickup axe test passes without excluding the ghost; only the `region` rule on the portal-mounted overlay stays disabled (inherent to drag overlays).
+- ✅ The drag link still needs an accessible name even when its content is hidden — `aria-label="LIN-N: title"` on the `<Link>` itself (M5 added this as part of the same fix).
+- ⚠️ The `visibility: hidden` wrapper has to match the card's natural dimensions exactly. Solved by keeping `BoardCardContent` inside the placeholder wrapper.
+
+---
+
+## ADR-015: dnd-kit announcement callbacks read state via `useRef`, not closure
+
+**Context:** dnd-kit's `accessibility.announcements` callbacks (`onDragStart`, `onDragOver`, `onDragEnd`, `onDragCancel`) fire outside React's render cycle. To produce domain copy like *"Issue LIN-42 moved to column In progress at position 2 of 4"*, the callbacks need the current `grouped` state (the per-status arrays of issues). A captured closure over `grouped` is stale at `onDragEnd`: the optimistic patch already wrote `boardOrder` and `status`, but the closure still holds the pre-patch grouping.
+
+**Decision:** Hold the current `grouped` in a `useRef`. Update it on every render with `groupedRef.current = grouped`. Announcement callbacks read `groupedRef.current` — always the latest, evergreen.
+
+**Why ref:**
+
+- **dnd-kit's callbacks live outside React's render lifecycle.** Treating them like component callbacks (closure-fresh per render) doesn't work. Refs are the canonical escape hatch.
+- **The state in question is read-only inside the callback** — no setState; just a lookup for the new position.
+- **One-line update on every render** keeps the ref in sync without `useEffect` overhead.
+
+**Why a different approach:**
+
+- Use `useCallback` with `grouped` in the deps. Rebuilds the callback on every render, but dnd-kit reads the callback through `accessibility.announcements` which is captured once at `DndContext` mount. So this doesn't actually help.
+- Push the announcement copy into Convex query results. Way over-engineered.
+
+**Consequences:**
+
+- ✅ `onDragEnd` reports the correct post-drop position.
+- ⚠️ Two ways to read state in the file — direct `grouped` for render, `groupedRef.current` for the callbacks. Documented inline.
+
+---
+
+## ADR-016: Presence as a 10s heartbeat + 30s staleness window
+
+**Context:** Module 5 ships realtime presence avatars on the issue detail panel — "who is also looking at this issue right now?" Two implementation shapes:
+
+- **Subscription channel** — explicit `subscribe` / `unsubscribe` on the client, server tracks connections, presence is computed from connection state. Tight coupling to the realtime transport.
+- **Live query over a heartbeat table** — clients write their `lastHeartbeat` on a timer; the presence query filters out anything older than a staleness window. Decoupled from the transport, falls out naturally from Convex's reactive query model.
+
+**Decision:** **Heartbeat + staleness.** Schema: `presence { workspaceId, issueId, userId, lastHeartbeat }` with indexes on `by_issue_and_user` and `by_issue`. The mounted detail panel hits `api.presence.heartbeat({ issueId })` every 10 seconds while open. The `api.presence.listByIssue` query returns rows where `lastHeartbeat > now - 30_000` and `userId !== viewer`. A daily cron prunes rows older than 7 days (defensive — the staleness filter already hides them from queries).
+
+**Why 10s heartbeat / 30s window:**
+
+- **Three intervals** balances "feels live" against "tolerates network jitter." A single dropped heartbeat doesn't flicker the avatar list — the user has 30 seconds before they're considered gone.
+- **Mobile networks routinely drop a keep-alive across a backgrounded tab returning to foreground.** A tighter window would cause avatars to vanish and reappear constantly. Three intervals smooths that.
+- **Storage cost is bounded.** At one heartbeat per 10s per viewer per issue, the working set is tiny. The cron handles the long tail.
+
+**Why a subscription channel:**
+
+- Sub-second presence updates (e.g. live cursors) — the polling cadence becomes the bottleneck. Mini-Linear doesn't need that.
+- The realtime transport already exposes connection state cheaply — Convex doesn't.
+
+**Consequences:**
+
+- ✅ Multi-tab presence works without any websocket subscription code; Convex's reactive query republishes when a heartbeat lands.
+- ✅ Tab close, sign-out, and network drop all self-evict within 30 seconds — no explicit cleanup required.
+- ⚠️ A user closing all tabs leaves their last heartbeat row in `presence` until the cron sweeps it. Cosmetic; not visible to anyone because the staleness filter excludes it.
+- ⚠️ Two viewers can briefly miss each other if they open the issue more than 30 seconds apart and one closes before the other's first heartbeat. Acceptable at portfolio scope.
+
+---
+
+## ADR-017: Tiptap with markdown round-trip — no schema change
+
+**Context:** M2 shipped the description editor as a `<textarea>` + Write/Preview toggle. It works but felt rough in a recruiter demo: users typed raw markdown and toggled to preview to see the result. M5 promised a richer editor without changing the underlying storage format. Two shapes:
+
+- **Switch to HTML / ProseMirror JSON storage.** Tiptap stores JSON natively; converting at the storage layer means writing a migration and changing the Convex validator.
+- **Keep markdown storage, parse on load + serialize on save.** Tiptap's `tiptap-markdown` extension provides both directions over `markdown-it`.
+
+**Decision:** **Tiptap with markdown round-trip.** Add `@tiptap/react` + StarterKit + Link + Placeholder + `tiptap-markdown`. Convex `issues.description` stays `v.optional(v.string())` storing markdown. The editor loads the markdown into the ProseMirror document, the user edits via a bubble menu + StarterKit input rules, and `editor.storage.markdown.getMarkdown()` serializes on save.
+
+**Why round-trip storage:**
+
+- **No migration.** The schema stays `v.string()` and every existing description renders unchanged.
+- **The full-page route can still read the same string.** No conditional rendering by format.
+- **Markdown is portable.** A future contributor could swap the editor library and the data still makes sense.
+- **`html: false` on the Markdown extension** treats raw HTML in stored markdown as literal text — kills an XSS surface that would otherwise need a sanitizer.
+
+**Why switch storage:**
+
+- Tiptap's full feature set (collaborative cursors via Yjs, custom mark schemas, tables-with-merged-cells) needs JSON storage. Mini-Linear doesn't use any of that.
+
+**Consequences:**
+
+- ✅ Users get markdown input rules without typing markdown (`# A` + space promotes to H1 in place; the literal `#` is consumed by ProseMirror's input rule).
+- ✅ The bubble menu on selection covers Bold / Italic / Strike / Code / Link without keyboard shortcuts.
+- ✅ Dynamic import (`next/dynamic({ ssr: false })`) keeps the ~85kB editor out of the `/issues` list bundle.
+- ⚠️ Round-trip is lossy at the edges — uncommon markdown constructs (footnotes, definition lists) round-trip imperfectly. StarterKit's coverage matches `remark-gfm`-equivalent features only.
+- ⚠️ Two markdown libraries are now in the bundle: `markdown-it` (via `tiptap-markdown`) and whatever StarterKit pulls. Acceptable cost.
+
+---
+
+## ADR-018: 30-day soft-delete TTL via a Convex cron
+
+**Context:** [ADR-007](#adr-007-soft-delete-with-undo-not-hard-delete--recreate) accepted the trade-off that soft-deleted rows accumulate forever. M5 promised to revisit. Two ways to bound the accumulation:
+
+- **TTL field on the doc + scheduled function.** Add a cron that scans for `deletedAt < cutoff` and hard-deletes.
+- **Move to hard-delete with a client-side "trash bin" UI.** Restore lists the trash, user clicks Restore on a row. More UI, less hidden state.
+
+**Decision:** **Daily Convex cron at 03:00 UTC** runs `internal.issues.purgeOldSoftDeleted`, which hard-deletes issues with `deletedAt < Date.now() - 30 * 24 * 60 * 60_000` (30 days). The mutation is `internalMutation` — not exposed to the client. The cron is declared in `convex/crons.ts` using `cronJobs().daily(...)`.
+
+**Why a TTL cron:**
+
+- **The Undo window is in-session (~6 seconds).** Any row reaching the cron is truly abandoned. No false positives.
+- **Off-peak hour** (03:00 UTC) keeps incident fallout away from US/Europe working hours.
+- **Internal mutation** removes any client-side attack surface — the function is only invokable from the Convex dashboard or the scheduler.
+- **Implementation cost is one file (`crons.ts`) + one mutation.** Cheap.
+
+**Why a trash UI instead:**
+
+- Users want to recover deletions days later (e.g. they realized they shouldn't have deleted Issue X last Tuesday). Mini-Linear's Undo-then-purge model says no.
+
+**Consequences:**
+
+- ✅ Soft-deleted rows are bounded.
+- ✅ The cron is testable in isolation (no auth context) and the mutation is small.
+- ⚠️ A purged row is gone — no recovery. The 30-day window is generous; acceptable.
+- ⚠️ Full table scan inside the mutation. Acceptable at portfolio scale; revisit if the workspace ever holds tens of thousands of issues by adding an index on `deletedAt`.
+
+---
+
+## ADR-019: Mobile board = single-column-with-dropdown filter (not horizontal scroll)
+
+**Context:** The desktop board renders six status columns horizontally with `overflow-x-auto` for the columns past the viewport. Phones are 360-430px wide — a single column already barely fits the cards. Three options for mobile:
+
+- **Horizontal scroll, unchanged.** Six 280px columns in 1700px of horizontal scroll. Users have to swipe between columns and rare cross-status drags happen across the scroll boundary.
+- **Stack vertically, all columns.** Show every column stacked. Cards in Backlog plus Todo plus In progress plus … = a very long page with collapsed/expanded columns.
+- **Single column at a time, with a filter.** Pick a status from a dropdown; render only that column; cross-status moves happen via the issue detail's status picker.
+
+**Decision:** **Single column with a dropdown filter** below `md` (768px). The filter is a sticky bar at the top of the board surface with a button trigger (current status icon + label + count + chevron) that opens the M2 `<OptionsPopover>` with the six statuses listed. Selecting a status swaps the visible column.
+
+**Why this UX:**
+
+- **Drag across six columns on a phone is the wrong interaction.** No matter how good the touch sensor is, a card can't visually leave the viewport during a drag — there's nowhere for it to go.
+- **The status picker in the detail panel already exists** and is the canonical way to change status on touch — one tap to open the issue, one tap to switch status.
+- **The dropdown reuses M2's `OptionsPopover`** — already accessible, already keyboard-navigable, already viewport-clamped. No new component.
+- **Vertical real estate is reclaimed** vs a chip bar (52px → 36px), which matters on portrait phones.
+
+**Why horizontal scroll instead:**
+
+- The recruiter is supposed to recognize the desktop board on mobile too. Trade-off: recognizable but unusable for actual drag interactions.
+
+**Consequences:**
+
+- ✅ The mobile board feels native, not a desktop layout squished.
+- ✅ Cross-status moves go through a path that already worked on touch (the status picker).
+- ⚠️ Recruiters using mobile may miss the kanban story — they see one column at a time. The README mentions the desktop demo URL explicitly.
+- ⚠️ Drag-within-a-column still works on touch via the TouchSensor — see [ADR-020](#adr-020-dnd-kit-touchsensor-with-200ms-long-press).
+
+---
+
+## ADR-020: dnd-kit `TouchSensor` with 200ms long-press
+
+**Context:** Adding a `TouchSensor` alongside `PointerSensor` introduces an ambiguity: a touch on a card could mean "tap to navigate" (the card is a `<Link>`) or "start dragging." dnd-kit's `TouchSensor` accepts an `activationConstraint` to disambiguate.
+
+**Decision:** **`useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })`**. A touch holds for 200ms within a 5px radius to start a drag. A quick tap or a tap-and-drag triggers the link's navigation instead.
+
+**Why 200ms / 5px:**
+
+- **200ms matches the iOS / Android long-press convention.** Users instinctively long-press to enter "rearrange mode" in native apps.
+- **5px tolerance** allows a small finger wiggle during the press without the press being interpreted as a swipe / drag-too-soon.
+- **Tap-to-navigate stays instant.** Below 200ms, the link fires.
+
+**Why other values:**
+
+- 150ms long-press is the Material Design spec but feels jumpy on iOS — many iOS users would activate drag accidentally while pausing to read a card.
+- 500ms is too slow — users feel the app is laggy.
+- No tolerance (`tolerance: 0`) makes the press fail on slightly unsteady fingers.
+
+**Consequences:**
+
+- ✅ Long-press to drag works; quick tap navigates. Both feel native.
+- ✅ Mouse and keyboard behavior unchanged (separate sensors).
+- ⚠️ Screen reader users on touch devices need `KeyboardSensor` (still wired); the announcer reads the same domain copy.
+
+---
+
+## ADR-021: Sidebar mobile drawer via Radix Dialog (no new dep)
+
+**Context:** Below `lg` (1024px), the static sidebar collides with the main content. The mobile drawer pattern is universal — hamburger button in the topbar, drawer slides in from the left, scrim behind, Esc closes, focus-trapped. Two libraries handle this well: `@radix-ui/react-dialog` (already in deps via cmdk) and `vaul` (a dedicated drawer library).
+
+**Decision:** **Reuse `@radix-ui/react-dialog`.** Create a `<SidebarDrawerProvider>` that wraps a `<Dialog.Root>` with `<Dialog.Overlay>` + `<Dialog.Content>` rendering the same `<Sidebar>` component. The trigger is a hamburger button in the topbar (`<SidebarDrawerTrigger>`). Both are `lg:hidden` so the desktop layout is unchanged.
+
+**Why Radix Dialog:**
+
+- **Already in deps** (cmdk + the slide-over dialogs).
+- **Focus trap, Esc, scrim, portal, ARIA all free.** No bespoke drawer logic.
+- **`useReducedMotion` gates the slide animation** — falls back to instant in/out.
+- **Closes on route change** via a `useEffect([pathname])` so navigating from a drawer link does the right thing.
+
+**Why vaul:**
+
+- vaul handles iOS swipe-to-dismiss and the natural drawer drag gesture. Mini-Linear's drawer is small enough that a tap on the scrim or X is fine — the swipe gesture isn't worth a new dep.
+
+**Consequences:**
+
+- ✅ Sidebar drawer ships in ~80 LOC with no new dependency.
+- ✅ A11y matches the rest of the app's modal patterns (cmdk dialog, slide-over).
+- ⚠️ No swipe-to-dismiss. Tap on scrim or X works fine; the gap to native is small.
+
+---
+
+## ADR-022: Three-way theme toggle with anti-flash init script
+
+**Context:** Tailwind v4 ships `dark:` driven by `prefers-color-scheme` out of the box. A user can override their OS preference by toggling a theme switch in-app. Three concerns:
+
+- **Persisting the choice** so a reload preserves it.
+- **Avoiding the dark→light flash** on hard reload for users in dark mode (server renders without knowing the user's preference, hydrates afterward).
+- **Supporting "follow system"** as a third explicit mode (not just light vs dark).
+
+**Decision:** **Three modes (`'light'` / `'dark'` / `'system'`)** stored in `localStorage['mini-linear.theme']`. Tailwind's `dark:` variant is switched to a `data-theme` attribute strategy via `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *))`. The root layout `<head>` injects a small inline `<script>` (the `THEME_INIT_SCRIPT` string constant) that reads localStorage + `prefers-color-scheme` and sets `data-theme` on `<html>` **synchronously before the first paint**.
+
+**Why this shape:**
+
+- **`data-theme` attribute lets the toggle override the OS without re-running media queries** — a flip is one DOM attribute change.
+- **The init script eliminates the dark-mode flash.** Without it, every hard reload for a dark-mode user shows ~80ms of light theme while React hydrates.
+- **`'system'` is a real mode, not "no choice."** Users can explicitly opt into following the OS, and the live `change` listener on the media query keeps the theme in sync.
+- **`role="group" aria-label="Theme"`** on the segmented control with `aria-pressed` on each segment matches the bubble menu's a11y pattern.
+
+**Why a different shape:**
+
+- Two modes (light / dark only) — simpler but forces a choice and loses the "respect my OS" affordance.
+- CSS-only via `@media (prefers-color-scheme: dark)` — no user override possible.
+
+**Consequences:**
+
+- ✅ Three-mode toggle ships with zero new deps and no flash.
+- ✅ Reload survives via localStorage. Switching the OS theme while in `'system'` mode flips the app live.
+- ⚠️ `dangerouslySetInnerHTML` is used for the init script. Content is build-time-known, no user input. Comment in code documents the bypass.
+- ⚠️ `suppressHydrationWarning` on `<html>` because the init script sets `data-theme` after SSR but before React hydration. Acceptable; the attribute is the only thing changing.
+
+---
+
+## ADR-023: Static `aria-label` on the slide-over wrapper (not `aria-labelledby`)
+
+**Context:** The slide-over panel was originally wired with `<motion.div role="dialog" aria-labelledby="issue-detail-title">` pointing into the `<h1 id="issue-detail-title">` inside the panel. The wrapper renders the moment the motion enters, before Convex's `useQuery(api.issues.get, { id })` resolves. During that ~100ms window the panel renders its `Loading…` fallback with no h1 — so `aria-labelledby` dangles. axe runs in the M2 Playwright suite and flags `aria-dialog-name` ("references elements that do not exist or are empty"), inconsistently in dev but reliably against the prod build.
+
+**Decision:** **Hard-code `aria-label="Issue details"`** on the slide-over wrapper. Keep the `<h1 id="issue-detail-title">` inside the panel for sighted users + heading navigation, but drop the `aria-labelledby` reference. The wrapper's name is now present from the instant the wrapper renders, regardless of inner content.
+
+**Why static:**
+
+- **Removes the race entirely.** The accessible name is a string constant, available immediately.
+- **The h1 inside is still useful** — screen reader users navigating by headings will land on it, and the visible title is unchanged.
+- **Generic name is fine.** A screen-reader user opening the panel hears "Issue details, dialog" and then the content reads itself. The issue's specific title comes through the h1 a moment later.
+
+**Why aria-labelledby into the panel:**
+
+- The dialog's name reads as the issue title, which is more specific. Trade-off: dangling reference during load.
+- Could be fixed by also waiting for the h1 in the e2e before running axe — but that papers over a real UX issue (a screen reader user opening the panel during load would hear nothing).
+
+**Consequences:**
+
+- ✅ axe `aria-dialog-name` passes from the moment the wrapper mounts.
+- ✅ No e2e gymnastics — the test asserts the dialog is visible and axe is happy.
+- ⚠️ Less specific accessible name. Acceptable trade.
+
+---
+
+## ADR-024: Up-one-level `(..)` intercept for `/board` → `/issues/[id]`
+
+**Context:** Both the `/issues` list and the `/board` kanban link cards to `/issues/[id]` for the detail view. The list uses a same-level intercept: `app/(app)/issues/@modal/(.)[id]/page.tsx`. The board originally also defined `app/(app)/board/@modal/(.)[id]/page.tsx`, which the M5 audit revealed is dead code: the `(.)` marker matches the segment one level above the slot — `/board/[id]` — which is a route that doesn't exist. So clicks on a board card were caught by the **issues** intercept instead, mounting the slide-over over the `/issues` list visually, then `router.back()` would land on `/board` after a brief flash of the issues list during the close animation.
+
+**Decision:** **Rename the board intercept path** from `(.)[id]` to `(..)issues/[id]`. The `(..)` marker climbs one segment from the slot's container (`/board/@modal/` → `/board/` → `/`), so it resolves `/issues/[id]` while the `/board` layout is mounted. Now a click from `/board` keeps the board mounted, the slide-over renders inside `/board`'s `@modal` slot, and `router.back()` returns cleanly to `/board` with no flash.
+
+**Why `(..)`:**
+
+- **It's the canonical Next.js way** to intercept a route from a sibling segment. The dead `(.)[id]` was a mistake from the original M4 setup that nobody caught because the issues intercept always fired.
+- **The fix is a path rename only.** File contents are unchanged.
+- **No change to the card href** — the board cards still link to `/issues/[id]`, which is the right canonical URL.
+
+**Why a different fix:**
+
+- Change the board card href to `/board/issues/[id]` and add a full-page route at that URL. More files, ugly URL.
+- Drop the board intercept and let `/board` cards always full-navigate. Loses the Linear-feeling slide-over from the board.
+
+**Consequences:**
+
+- ✅ Mobile sheet close from /board lands on /board with no flash of /issues underneath.
+- ✅ The reload-at-slide-over URL still falls back cleanly to the full-page `/issues/[id]` route (same as before).
+- ⚠️ Two intercepts now exist for the same target URL (`/issues/[id]`): the `/issues` `(.)` one and the `/board` `(..)issues/` one. Next resolves based on the current segment — the right one fires automatically.

@@ -101,7 +101,7 @@ export function InlineEditableTitle({
         aria-label={ariaLabel ?? 'Edit title'}
         maxLength={maxLength}
         disabled={pending}
-        className={`${className ?? ''} w-full bg-transparent outline-none ring-1 ring-zinc-300 dark:ring-zinc-700`}
+        className={`${className ?? ''} rounded bg-white px-1 outline-none ring-2 ring-inset ring-zinc-400 dark:bg-zinc-950 dark:ring-zinc-500`}
       />
     );
   }
