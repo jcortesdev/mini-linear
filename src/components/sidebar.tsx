@@ -5,13 +5,26 @@ import { KanbanSquare, ListTodo } from 'lucide-react';
 import { api } from '../../convex/_generated/api';
 import { NavLink } from './nav-link';
 
-export function Sidebar() {
+type Variant = 'static' | 'drawer';
+
+/**
+ * Workspace nav. Rendered two ways:
+ *  - `static` (default): inline sidebar visible at `lg` and up; hidden below.
+ *  - `drawer`: mounted inside the Radix Dialog for the mobile drawer; no
+ *    border/visibility classes because the Dialog provides them.
+ */
+export function Sidebar({ variant = 'static' }: { variant?: Variant } = {}) {
   const workspace = useQuery(api.workspaces.viewerWorkspace);
+  const isDrawer = variant === 'drawer';
 
   return (
     <aside
-      aria-label="Workspace navigation"
-      className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950"
+      aria-label={isDrawer ? undefined : 'Workspace navigation'}
+      className={
+        isDrawer
+          ? 'flex h-full flex-col'
+          : 'hidden w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 lg:flex'
+      }
     >
       <div className="flex h-12 items-center border-b border-zinc-200 px-4 dark:border-zinc-800">
         {workspace ? (

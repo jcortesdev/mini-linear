@@ -9,9 +9,15 @@ import type { BoardIssue } from './board-view';
 type Props = {
   status: IssueStatus;
   issues: BoardIssue[];
+  /**
+   * When false, hide the column below `md`. The mobile board only renders the
+   * status the user has currently filtered to (see BoardView filter chips);
+   * above `md` every column is visible regardless.
+   */
+  visibleOnMobile?: boolean;
 };
 
-export function BoardColumn({ status, issues }: Props) {
+export function BoardColumn({ status, issues, visibleOnMobile = true }: Props) {
   const meta = STATUS_META[status];
   const Icon = meta.icon;
   // Register the card list as a droppable so empty columns (and the empty
@@ -26,7 +32,7 @@ export function BoardColumn({ status, issues }: Props) {
   return (
     <section
       aria-label={`${meta.label} column, ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`}
-      className="flex w-72 shrink-0 flex-col rounded-md bg-zinc-50 dark:bg-zinc-900/60"
+      className={`${visibleOnMobile ? 'flex' : 'hidden md:flex'} w-full shrink-0 flex-col rounded-md bg-zinc-50 dark:bg-zinc-900/60 md:w-72`}
     >
       <header className="flex items-center justify-between gap-2 px-3 py-2">
         <div className="flex items-center gap-2">
