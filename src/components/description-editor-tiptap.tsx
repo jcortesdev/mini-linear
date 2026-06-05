@@ -146,12 +146,6 @@ export function DescriptionEditor({ issueId, initialValue }: Props) {
 
   return (
     <div className="space-y-2">
-      <h2
-        id="issue-description-heading"
-        className="text-xs font-medium uppercase tracking-wide text-zinc-500"
-      >
-        Description
-      </h2>
       <BubbleMenu
         editor={editor}
         className="flex items-center gap-0.5 rounded-md border border-zinc-200 bg-white p-0.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"

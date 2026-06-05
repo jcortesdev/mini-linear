@@ -160,6 +160,15 @@ async function dragCardToColumn(
   card: ReturnType<Page['locator']>,
   column: ReturnType<Page['locator']>
 ) {
+  // The demo workspace accumulates `[e2e-m4]` rows across runs, so the
+  // freshly-created card (boardOrder = max + 1000) lands at the bottom of
+  // Backlog — often below the column's overflow-y-auto fold. Without an
+  // explicit scroll, boundingBox() returns coordinates inside the scroll
+  // area but outside the viewport, and Playwright's mouse events never
+  // reach the right element.
+  await card.scrollIntoViewIfNeeded();
+  await column.scrollIntoViewIfNeeded();
+
   const cardBox = await card.boundingBox();
   const columnBox = await column.boundingBox();
   if (!cardBox || !columnBox) throw new Error('Could not measure card or column for drag.');

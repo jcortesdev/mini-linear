@@ -66,6 +66,11 @@ test.describe('M5 description editor (Tiptap)', () => {
     await page.getByRole('button', { name: /^save$/i }).click();
     await expect(page.getByRole('button', { name: /^save$/i })).toBeDisabled();
     await page.reload();
+    // Reload at /issues/{id} renders the full-page route, not the list — go
+    // back to /issues so we can re-open via the intercept and prove the
+    // editor reads the persisted markdown on a fresh slide-over mount.
+    await page.goto('/issues');
+    await expect(page.locator('li[data-row-index="0"]')).toBeVisible({ timeout: 10_000 });
     await openIssue(page, title);
 
     const reopened = page.getByLabel('Issue description');

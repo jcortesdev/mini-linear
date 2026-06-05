@@ -115,7 +115,16 @@ export function IssueDetailPanel({ id, onClose, fullPage = false }: Props) {
 
         <Metadata issue={issue} />
 
-        <section aria-labelledby="issue-description-heading" className="mt-6">
+        <section aria-labelledby="issue-description-heading" className="mt-6 space-y-2">
+          {/* Heading lives here, not inside the lazy-loaded editor — otherwise
+              the section's aria-labelledby dangles during the dynamic-import
+              skeleton phase and axe flags aria-prohibited-attr. */}
+          <h2
+            id="issue-description-heading"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500"
+          >
+            Description
+          </h2>
           <DescriptionEditor issueId={issue._id} initialValue={issue.description} />
         </section>
       </div>
