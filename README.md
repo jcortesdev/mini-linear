@@ -77,7 +77,7 @@ Targets per [CLAUDE conventions](./.claude/CLAUDE.md) (private to the repo): ≥
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — technical shape, data model, security posture, deployment.
-- [`docs/DECISIONS.md`](./docs/DECISIONS.md) — 24 architecture decision records (ADRs) covering every non-obvious choice.
+- [`docs/DECISIONS.md`](./docs/DECISIONS.md) — 25 architecture decision records (ADRs) covering every non-obvious choice.
 
 ## Local development
 
@@ -112,6 +112,15 @@ pnpm build && pnpm start
 ```
 
 The build embeds the `NEXT_PUBLIC_CONVEX_URL` from `.env.local` — by default that's the dev Convex deployment, so local prod runs against shared dev data. Vercel deployments deploy Convex atomically via `npx convex deploy --cmd 'pnpm build'`.
+
+## Roadmap
+
+The product is feature-complete for portfolio scope. The next iteration would lower the barrier for users unfamiliar with Markdown:
+
+- **Persistent editor toolbar** above the description — surface Bold / Italic / Link / Heading / List as always-visible buttons rather than only inside the selection-driven bubble menu.
+- **Slash command menu** (`/`) — open a popup with block-level inserts (Heading, Bullet list, Code block, Divider), the same pattern Notion and Linear use to teach formatting inline.
+
+Both are additive, not blocking: the Markdown shortcuts and the bubble menu already cover every formatting operation, and content round-trips through the existing storage layer unchanged. UX polish, not a missing feature.
 
 ## License
 

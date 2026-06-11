@@ -661,3 +661,29 @@ ADRs that are obvious in hindsight (use TypeScript, use Tailwind, use pnpm) are 
 - ✅ Mobile sheet close from /board lands on /board with no flash of /issues underneath.
 - ✅ The reload-at-slide-over URL still falls back cleanly to the full-page `/issues/[id]` route (same as before).
 - ⚠️ Two intercepts now exist for the same target URL (`/issues/[id]`): the `/issues` `(.)` one and the `/board` `(..)issues/` one. Next resolves based on the current segment — the right one fires automatically.
+
+## ADR-025: Defer permanent editor toolbar + slash menu
+
+**Context:** The Tiptap description editor (M5) exposes formatting through two surfaces: Markdown input rules (`# `, `- `, `**bold**`) and a `BubbleMenu` that pops over a text selection. During local smoke a user without prior Markdown familiarity discovered that `*bold*` renders as italic (correctly — CommonMark spec is `**bold**`), and that there's no visible affordance for "what can I do here?" until you select text. The natural fixes are a persistent toolbar above the editor and a `/` slash-command menu for block-level inserts.
+
+**Decision:** **Document as M6, do not block M5 merge.** The portfolio plan covers four demos; spending more time on Mini-Linear's editor delays the next one (`habit-tracker`). Defer both to a clearly-scoped follow-up.
+
+**Why defer, not ship now:**
+
+- **The capability is complete, the discoverability isn't.** Every formatting operation works today via Markdown shortcuts or the bubble menu. The gap is teaching first-time users — a UX polish task, not a feature gap.
+- **Slash menu is meaningful work, not a 1-line tweak.** It needs `@tiptap/suggestion` (re-added — it was removed in M5's depcheck pass), a custom Extension wiring an anchored popup to the caret, six block inserts, keyboard nav inside the popup, an axe pass on the popup itself, and an e2e test for the open/select/insert flow. Shipping it loose under "polish" would be sloppy.
+- **Persistent toolbar is a 30-line change but only meaningful alongside the slash menu.** Both surface the same operations from different entry points (selection vs. caret). Shipping one without the other leaves the same UX asymmetry the smoke test surfaced.
+- **The work is logged.** [README's Roadmap section](../README.md#roadmap) and `_private/mini-linear/PROGRESS.md`'s "Post-M5 follow-ups" both capture the user need, the implementation outline, and the scope split (toolbar = polish commit on main, slash menu = M6 with proper ADR + e2e). A future session can pick this up without re-discovery.
+
+**Why a different fix wasn't taken in M5:**
+
+- Ship just the toolbar in M5. Half-measure; same discoverability asymmetry remains.
+- Rewrite the hint text below the editor to spell out `**bold**` vs `*italic*`. Patches the symptom, not the cause — a user who doesn't know Markdown doesn't want to learn the spec, they want buttons.
+- Switch to a non-Markdown editor (Lexical, Slate). Breaks the existing storage model — descriptions are stored as Markdown strings via `tiptap-markdown` round-trip, with zero schema migration cost when we made M5's editor swap.
+
+**Consequences:**
+
+- ✅ M5 ships on time; portfolio progression continues to `doc-ai-chat`.
+- ✅ Recruiters reading the README see a confident "what's next" framing instead of a defensive "known issue" note (see Roadmap section).
+- ✅ The editor still works end-to-end for anyone willing to use Markdown shortcuts or select text first — that's the existing M5 review bar (Lighthouse Perf 96 / A11y 100 / Best Practices 100 / SEO 100, axe 0 violations).
+- ⚠️ A first-time non-technical user evaluating the demo without reading docs may type `*bold*` expecting bold and conclude the editor is broken. The bubble menu mitigates this once they select text. Acceptable risk at portfolio scope.
